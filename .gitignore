@@ -1,0 +1,8 @@
+dist/
+**/build/
+**/bin/
+**/obj/
+**/node_modules/
+**/.gradle/
+**/__pycache__/
+**/*.egg-info/

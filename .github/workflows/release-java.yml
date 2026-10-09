@@ -1,0 +1,26 @@
+# Publica br.com.farohq:farohq-java no Maven Central ao criar a tag java-vX.Y.Z
+name: release-java
+on:
+  push:
+    tags: ["java-v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Testes
+        run: ./gradlew test
+      - name: Publicar no Maven Central
+        run: ./gradlew publishAndReleaseToMavenCentral -PVERSION_NAME=${GITHUB_REF_NAME#java-v} --no-configuration-cache
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}

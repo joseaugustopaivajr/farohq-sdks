@@ -1,0 +1,21 @@
+{
+  "name": "@farohq/node",
+  "version": "0.1.0",
+  "description": "Envia os erros de aplicações Node.js (Express, Next.js, Fastify...) para o FaroHQ: análise de causa raiz com IA.",
+  "license": "MIT",
+  "homepage": "https://farohq.com.br",
+  "keywords": ["farohq", "error-tracking", "observability", "monitoring", "express", "nextjs", "ai"],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/index.test.js"
+  },
+  "publishConfig": { "access": "public", "provenance": true },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,71 @@
+import com.vanniktech.maven.publish.SonatypeHost
+
+plugins {
+    id 'java-library'
+    id 'com.vanniktech.maven.publish' version '0.30.0'
+}
+
+group = 'br.com.farohq'
+version = project.findProperty('VERSION_NAME') ?: '0.1.0'
+
+java {
+    // Java 11+: usa só java.net.http, sem dependências obrigatórias
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 11
+    options.encoding = 'UTF-8'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Opcional: só quem usa o appender do Logback (Spring Boot já traz)
+    compileOnly 'ch.qos.logback:logback-classic:1.4.14'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'ch.qos.logback:logback-classic:1.4.14'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+mavenPublishing {
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, true)
+    // Assina só quando a chave GPG existe (CI de release); publicação local fica sem assinatura
+    if (project.hasProperty('signingInMemoryKey')) {
+        signAllPublications()
+    }
+    coordinates('br.com.farohq', 'farohq-java', version.toString())
+    pom {
+        name = 'FaroHQ Java SDK'
+        description = 'Envia os erros de aplicações Java para o FaroHQ (análise de causa raiz com IA).'
+        inceptionYear = '2026'
+        url = 'https://farohq.com.br'
+        licenses {
+            license {
+                name = 'MIT License'
+                url = 'https://opensource.org/licenses/MIT'
+            }
+        }
+        developers {
+            developer {
+                id = 'farohq'
+                name = 'FaroHQ'
+                url = 'https://farohq.com.br'
+            }
+        }
+        scm {
+            url = 'https://farohq.com.br'
+        }
+    }
+}

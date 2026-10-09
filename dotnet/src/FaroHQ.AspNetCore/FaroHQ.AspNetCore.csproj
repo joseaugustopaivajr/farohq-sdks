@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>FaroHQ.AspNetCore</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Envia os erros de aplicações ASP.NET Core para o FaroHQHQ (análise de causa raiz com IA).</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Authors>FaroHQ</Authors>
+    <Company>FaroHQ</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://farohq.com.br</PackageProjectUrl>
+    <PackageTags>farohq;error-tracking;observability;aspnetcore;logging;ai</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="icon.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "farohq"
+version = "0.1.0"
+description = "Envia os erros de aplicações Python (Django, Flask, FastAPI...) para o FaroHQ: análise de causa raiz com IA."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+keywords = ["farohq", "error-tracking", "observability", "logging", "django", "flask", "fastapi"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Monitoring",
+  "Topic :: Software Development :: Bug Tracking",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://farohq.com.br"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/farohq"]
