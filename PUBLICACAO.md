@@ -95,7 +95,7 @@ Cada registro precisa de uma conta do FaroHQ e de um segredo no GitHub
 
 1. Crie a conta em <https://www.npmjs.com> e a organização **`farohqbr`** (o escopo `@farohq` pertence a outra empresa) (plano grátis, pacotes públicos).
 2. **Access Tokens → Generate New Token → Granular**: permissão **Read and write** só para a
-   organização `farohqbr`, validade longa.
+   organização `farohqbr`, validade longa, e marque **Bypass two-factor authentication (2FA)** (sem isso o npm responde 403).
 3. ```bash
    gh secret set NPM_TOKEN -R joseaugustopaivajr/farohq-sdks
    ```
