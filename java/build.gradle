@@ -65,7 +65,9 @@ mavenPublishing {
             }
         }
         scm {
-            url = 'https://farohq.com.br'
+            url = 'https://github.com/joseaugustopaivajr/farohq-sdks'
+            connection = 'scm:git:https://github.com/joseaugustopaivajr/farohq-sdks.git'
+            developerConnection = 'scm:git:ssh://git@github.com/joseaugustopaivajr/farohq-sdks.git'
         }
     }
 }
