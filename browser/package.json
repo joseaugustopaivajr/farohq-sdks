@@ -38,7 +38,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-global.mjs",
-    "test": "npm run build && node --test test/browser.test.js test/sourcemaps-cli.test.js"
+    "test": "npm run build && node --test --test-force-exit --test-timeout=60000 test/browser.test.js test/sourcemaps-cli.test.js"
   },
   "publishConfig": {
     "access": "public",

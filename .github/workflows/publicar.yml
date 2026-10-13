@@ -34,6 +34,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.pacote == 'todos' || inputs.pacote == 'java')) ||
       startsWith(github.ref, 'refs/tags/java-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults: { run: { working-directory: java } }
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +70,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.pacote == 'todos' || inputs.pacote == 'node')) ||
       startsWith(github.ref, 'refs/tags/node-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions: { contents: read, id-token: write } # provenance do npm
     defaults: { run: { working-directory: node } }
     steps:
@@ -94,6 +96,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.pacote == 'todos' || inputs.pacote == 'browser')) ||
       startsWith(github.ref, 'refs/tags/browser-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions: { contents: read, id-token: write }
     defaults: { run: { working-directory: browser } }
     steps:
@@ -119,6 +122,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.pacote == 'todos' || inputs.pacote == 'python')) ||
       startsWith(github.ref, 'refs/tags/python-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: pypi # o PyPI confere este ambiente no Trusted Publishing (sem token)
     permissions: { contents: read, id-token: write }
     defaults: { run: { working-directory: python } }
@@ -146,6 +150,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.pacote == 'todos' || inputs.pacote == 'dotnet')) ||
       startsWith(github.ref, 'refs/tags/dotnet-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions: { contents: read, id-token: write } # Trusted Publishing do NuGet (sem chave guardada)
     defaults: { run: { working-directory: dotnet } }
     steps:
