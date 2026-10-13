@@ -28,6 +28,8 @@ public final class FaroHQClient implements AutoCloseable {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final Thread worker;
     private volatile boolean running = true;
+    /** Eventos aceitos e ainda não enviados (na fila ou sendo enviados agora). */
+    private final java.util.concurrent.atomic.AtomicInteger pending = new java.util.concurrent.atomic.AtomicInteger();
     private final LogShipper logs;
 
     public FaroHQClient(FaroHQOptions options) {
@@ -105,7 +107,9 @@ public final class FaroHQClient implements AutoCloseable {
             }
             List<Breadcrumbs.Crumb> crumbs = options.maxBreadcrumbs > 0
                     ? Breadcrumbs.snapshot(traceId, options.breadcrumbMaxAgeSeconds) : List.of();
-            queue.offer(toJson(message, error, context, Instant.now(), traceId, crumbs));
+            if (queue.offer(toJson(message, error, context, Instant.now(), traceId, crumbs))) {
+                pending.incrementAndGet();
+            }
         } catch (RuntimeException ignored) {
             // Reportar erro nunca pode derrubar a aplicação
         }
@@ -170,7 +174,11 @@ public final class FaroHQClient implements AutoCloseable {
             try {
                 String body = queue.poll(500, TimeUnit.MILLISECONDS);
                 if (body != null) {
-                    send(body);
+                    try {
+                        send(body);
+                    } finally {
+                        pending.decrementAndGet();
+                    }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -185,7 +193,7 @@ public final class FaroHQClient implements AutoCloseable {
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
                     .header("X-FaroHQ-Key", options.key)
-                    .header("User-Agent", "farohq-java/0.1.0")
+                    .header("User-Agent", "farohq-java/0.2.1")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
             http.send(request, HttpResponse.BodyHandlers.discarding());
@@ -200,7 +208,8 @@ public final class FaroHQClient implements AutoCloseable {
             logs.flush(timeout);
         }
         long deadline = System.nanoTime() + timeout.toNanos();
-        while (!queue.isEmpty() && System.nanoTime() < deadline) {
+        // Espera a fila E os envios em andamento: senão o programa termina com o evento a caminho
+        while (pending.get() > 0 && System.nanoTime() < deadline) {
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {

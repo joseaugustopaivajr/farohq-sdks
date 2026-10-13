@@ -25,7 +25,8 @@ internal sealed class FaroHQSender : BackgroundService
     {
         await foreach (var evt in _queue.Reader.ReadAllAsync(stoppingToken))
         {
-            await SendAsync(evt, stoppingToken);
+            // Sem o token de parada: um envio já começado termina (o HttpClient tem timeout de 10 s)
+            await SendAsync(evt, CancellationToken.None);
         }
     }
 

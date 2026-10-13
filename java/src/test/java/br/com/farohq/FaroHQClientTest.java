@@ -181,6 +181,30 @@ class FaroHQClientTest {
         appender.stop();
     }
 
+    @Test
+    void flushEsperaOEnvioEmAndamento() throws IOException {
+        // Servidor lento: o evento sai da fila, mas a resposta demora. O flush tem que esperar.
+        HttpServer slow = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        List<String> got = new CopyOnWriteArrayList<>();
+        slow.createContext("/ingest", ex -> {
+            sleep(800);
+            got.add(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            ex.sendResponseHeaders(202, -1);
+            ex.close();
+        });
+        slow.start();
+        try {
+            FaroHQClient c = new FaroHQClient(new FaroHQOptions().key("k")
+                    .endpoint("http://127.0.0.1:" + slow.getAddress().getPort() + "/ingest/event"));
+            c.captureException(new IllegalStateException("último erro antes de sair"));
+            c.flush(Duration.ofSeconds(5));
+            assertEquals(1, got.size(), "flush voltou antes de o envio terminar");
+            c.close();
+        } finally {
+            slow.stop(0);
+        }
+    }
+
     private static void sleep(long ms) {
         try {
             Thread.sleep(ms);

@@ -62,7 +62,8 @@ internal sealed class FaroHQLogShipper : BackgroundService
                     await Task.Delay(100, stoppingToken);
                 }
             }
-            await SendAsync(batch, stoppingToken);
+            // Sem o token de parada: um lote já começado termina (o HttpClient tem timeout de 10 s)
+            await SendAsync(batch, CancellationToken.None);
             batch.Clear();
         }
     }

@@ -26,6 +26,8 @@ final class LogShipper {
     private final BlockingQueue<String> queue;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private volatile boolean running = true;
+    /** Linhas aceitas e ainda não enviadas (na fila ou no lote sendo enviado). */
+    private final java.util.concurrent.atomic.AtomicInteger pending = new java.util.concurrent.atomic.AtomicInteger();
 
     LogShipper(FaroHQOptions options) {
         this.options = options;
@@ -61,7 +63,9 @@ final class LogShipper {
             }
             sb.append('}');
         }
-        queue.offer(sb.append('}').toString());
+        if (queue.offer(sb.append('}').toString())) {
+            pending.incrementAndGet();
+        }
     }
 
     private void loop() {
@@ -82,8 +86,12 @@ final class LogShipper {
                     }
                     batch.add(next);
                 }
-                send(batch);
-                batch.clear();
+                try {
+                    send(batch);
+                } finally {
+                    pending.addAndGet(-batch.size());
+                    batch.clear();
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -98,7 +106,7 @@ final class LogShipper {
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
                     .header("X-FaroHQ-Key", options.key)
-                    .header("User-Agent", "farohq-java/0.2.0")
+                    .header("User-Agent", "farohq-java/0.2.1")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
             http.send(request, HttpResponse.BodyHandlers.discarding());
@@ -109,7 +117,7 @@ final class LogShipper {
 
     void flush(Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
-        while (!queue.isEmpty() && System.nanoTime() < deadline) {
+        while (pending.get() > 0 && System.nanoTime() < deadline) {
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {

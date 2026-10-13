@@ -9,13 +9,13 @@ Funciona em **Java e Kotlin** (Java 11+).
 **Gradle (Kotlin DSL)**
 
 ```kotlin
-implementation("br.com.farohq:farohq-java:0.2.0")
+implementation("br.com.farohq:farohq-java:0.2.1")
 ```
 
 **Gradle (Groovy)**
 
 ```groovy
-implementation 'br.com.farohq:farohq-java:0.2.0'
+implementation 'br.com.farohq:farohq-java:0.2.1'
 ```
 
 **Maven**
@@ -24,7 +24,7 @@ implementation 'br.com.farohq:farohq-java:0.2.0'
 <dependency>
   <groupId>br.com.farohq</groupId>
   <artifactId>farohq-java</artifactId>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
 </dependency>
 ```
 
