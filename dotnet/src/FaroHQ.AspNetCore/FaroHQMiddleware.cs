@@ -11,6 +11,8 @@ internal sealed class FaroHQMiddleware
 
     public async Task InvokeAsync(HttpContext context, IFaroHQClient faro)
     {
+        using var scope = FaroHQBreadcrumbs.BeginScope(
+            System.Diagnostics.Activity.Current?.TraceId.ToHexString() ?? context.TraceIdentifier);
         try
         {
             await _next(context);

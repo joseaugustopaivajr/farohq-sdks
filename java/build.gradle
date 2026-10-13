@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'br.com.farohq'
-version = project.findProperty('VERSION_NAME') ?: '0.1.0'
+version = project.findProperty('VERSION_NAME') ?: '0.2.0'
 
 java {
     // Java 11+: usa só java.net.http, sem dependências obrigatórias
@@ -48,7 +48,7 @@ mavenPublishing {
     coordinates('br.com.farohq', 'farohq-java', version.toString())
     pom {
         name = 'FaroHQ Java SDK'
-        description = 'Envia os erros de aplicações Java para o FaroHQ (análise de causa raiz com IA).'
+        description = 'Envia os erros de aplicações Java para o FaroHQ (análise de causa raiz lendo o seu código).'
         inceptionYear = '2026'
         url = 'https://farohq.com.br'
         licenses {

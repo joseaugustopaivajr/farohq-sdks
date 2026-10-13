@@ -1,0 +1,26 @@
+# Publica @farohq/browser no npm (com provenance) ao criar a tag browser-vX.Y.Z
+name: release-browser
+on:
+  push:
+    tags: ["browser-v*"]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          browser-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - run: npm ci || npm install
+      - run: npm version ${GITHUB_REF_NAME#browser-v} --no-git-tag-version --allow-same-version
+      - run: npm test
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

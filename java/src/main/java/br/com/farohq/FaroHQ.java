@@ -53,6 +53,11 @@ public final class FaroHQ {
         client().captureException(error, context);
     }
 
+    /** Guarda uma linha no rastro da thread atual (vai junto com o próximo erro). */
+    public static void addBreadcrumb(String level, String message) {
+        client().addBreadcrumb(level, null, message, null);
+    }
+
     public static void captureMessage(String message) {
         client().captureMessage(message, null);
     }

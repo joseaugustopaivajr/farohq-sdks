@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>FaroHQ.AspNetCore</PackageId>
-    <Version>0.1.0</Version>
-    <Description>Envia os erros de aplicações ASP.NET Core para o FaroHQHQ (análise de causa raiz com IA).</Description>
+    <Version>0.2.0</Version>
+    <Description>Envia os erros de aplicações ASP.NET Core para o FaroHQ (análise de causa raiz lendo o seu código).</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Authors>FaroHQ</Authors>
     <Company>FaroHQ</Company>

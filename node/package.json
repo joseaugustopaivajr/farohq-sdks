@@ -1,7 +1,7 @@
 {
   "name": "@farohq/node",
-  "version": "0.1.0",
-  "description": "Envia os erros de aplicações Node.js (Express, Next.js, Fastify...) para o FaroHQ: análise de causa raiz com IA.",
+  "version": "0.2.0",
+  "description": "Envia os erros de aplicações Node.js (Express, Next.js, Fastify...) para o FaroHQ: análise de causa raiz lendo o seu código.",
   "license": "MIT",
   "homepage": "https://farohq.com.br",
   "keywords": ["farohq", "error-tracking", "observability", "monitoring", "express", "nextjs", "ai"],

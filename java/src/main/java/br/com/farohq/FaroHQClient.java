@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -27,6 +28,7 @@ public final class FaroHQClient implements AutoCloseable {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final Thread worker;
     private volatile boolean running = true;
+    private final LogShipper logs;
 
     public FaroHQClient(FaroHQOptions options) {
         this.options = options;
@@ -34,6 +36,22 @@ public final class FaroHQClient implements AutoCloseable {
         this.worker = new Thread(this::loop, "farohq-sender");
         this.worker.setDaemon(true);
         this.worker.start();
+        this.logs = options.shipLogs && options.canSend() ? new LogShipper(options) : null;
+    }
+
+    /** Uma linha de log para o módulo de Logs (só se shipLogs estiver ligado). */
+    public void log(String level, String logger, String message, String traceId, Map<String, String> attributes) {
+        if (logs != null) {
+            try {
+                logs.offer(level, logger, message, traceId, attributes);
+            } catch (RuntimeException ignored) {
+                // nunca atrapalha o log da aplicação
+            }
+        }
+    }
+
+    public boolean shipsLogs() {
+        return logs != null;
     }
 
     public void captureException(Throwable error) {
@@ -53,10 +71,28 @@ public final class FaroHQClient implements AutoCloseable {
 
     /** Mensagem (ex.: a linha do log) + exceção opcional + contexto. */
     public void capture(String message, Throwable error, Map<String, String> context) {
-        enqueue(message, error, context);
+        enqueue(message, error, context, null);
+    }
+
+    /** Igual, com o ID da requisição (traceId) para ligar o erro aos logs na sua ferramenta. */
+    public void capture(String message, Throwable error, Map<String, String> context, String traceId) {
+        enqueue(message, error, context, traceId);
+    }
+
+    /** Guarda uma linha no rastro da thread atual; vai junto com o próximo erro desta thread. */
+    public void addBreadcrumb(String level, String logger, String message, String traceId) {
+        Breadcrumbs.add(level, logger, message, traceId, options.maxBreadcrumbs);
+    }
+
+    public FaroHQOptions options() {
+        return options;
     }
 
     void enqueue(String message, Throwable error, Map<String, String> context) {
+        enqueue(message, error, context, null);
+    }
+
+    void enqueue(String message, Throwable error, Map<String, String> context, String traceId) {
         if (!options.canSend()) {
             return;
         }
@@ -67,13 +103,20 @@ public final class FaroHQClient implements AutoCloseable {
             if (error != null) {
                 Captured.mark(error);
             }
-            queue.offer(toJson(message, error, context, Instant.now()));
+            List<Breadcrumbs.Crumb> crumbs = options.maxBreadcrumbs > 0
+                    ? Breadcrumbs.snapshot(traceId, options.breadcrumbMaxAgeSeconds) : List.of();
+            queue.offer(toJson(message, error, context, Instant.now(), traceId, crumbs));
         } catch (RuntimeException ignored) {
             // Reportar erro nunca pode derrubar a aplicação
         }
     }
 
     String toJson(String message, Throwable error, Map<String, String> context, Instant when) {
+        return toJson(message, error, context, when, null, List.of());
+    }
+
+    String toJson(String message, Throwable error, Map<String, String> context, Instant when,
+                  String traceId, List<Breadcrumbs.Crumb> crumbs) {
         StringBuilder sb = new StringBuilder(512).append('{');
         Json.field(sb, "level", "error").append(',');
         Json.field(sb, "environment", options.environment).append(',');
@@ -81,6 +124,23 @@ public final class FaroHQClient implements AutoCloseable {
         Json.field(sb, "service", options.service).append(',');
         Json.field(sb, "message", message).append(',');
         Json.field(sb, "timestamp", when.toString());
+        if (traceId != null) {
+            sb.append(',');
+            Json.field(sb, "traceId", traceId);
+        }
+        if (crumbs != null && !crumbs.isEmpty()) {
+            sb.append(",\"breadcrumbs\":[");
+            for (int i = 0; i < crumbs.size(); i++) {
+                Breadcrumbs.Crumb c = crumbs.get(i);
+                sb.append(i == 0 ? "{" : ",{");
+                Json.field(sb, "timestamp", c.timestamp.toString()).append(',');
+                Json.field(sb, "level", c.level).append(',');
+                Json.field(sb, "logger", c.logger).append(',');
+                Json.field(sb, "message", c.message);
+                sb.append('}');
+            }
+            sb.append(']');
+        }
         if (error != null) {
             StringWriter sw = new StringWriter();
             error.printStackTrace(new PrintWriter(sw));
@@ -136,6 +196,9 @@ public final class FaroHQClient implements AutoCloseable {
 
     /** Espera a fila esvaziar (até o tempo dado). Chame ao desligar a aplicação. */
     public void flush(Duration timeout) {
+        if (logs != null) {
+            logs.flush(timeout);
+        }
         long deadline = System.nanoTime() + timeout.toNanos();
         while (!queue.isEmpty() && System.nanoTime() < deadline) {
             try {
@@ -150,6 +213,9 @@ public final class FaroHQClient implements AutoCloseable {
     @Override
     public void close() {
         flush(Duration.ofSeconds(5));
+        if (logs != null) {
+            logs.close();
+        }
         running = false;
     }
 

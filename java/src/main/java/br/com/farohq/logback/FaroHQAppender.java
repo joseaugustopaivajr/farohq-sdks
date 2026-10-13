@@ -26,6 +26,9 @@ public class FaroHQAppender extends AppenderBase<ILoggingEvent> {
 
     private final FaroHQOptions options = new FaroHQOptions();
     private FaroHQClient client;
+    private Level breadcrumbLevel = Level.INFO;
+    private Level logsLevel = Level.INFO;
+    private String[] traceIdKeys = {"traceId", "trace_id", "X-B3-TraceId", "dd.trace_id", "requestId", "correlationId"};
 
     public void setKey(String key) {
         if (key != null && !key.isBlank()) {
@@ -55,6 +58,31 @@ public class FaroHQAppender extends AppenderBase<ILoggingEvent> {
         options.service(service);
     }
 
+    /** Envia todos os logs (a partir de logsLevel) para o módulo de Logs. Padrão: FAROHQ_LOGS. */
+    public void setShipLogs(boolean ship) {
+        options.shipLogs(ship);
+    }
+
+    /** Nível mínimo das linhas enviadas ao módulo de Logs: DEBUG, INFO (padrão), WARN... */
+    public void setLogsLevel(String level) {
+        logsLevel = Level.toLevel(level, Level.INFO);
+    }
+
+    /** Quantas linhas anteriores ao erro vão junto (0 desliga). Padrão: 30. */
+    public void setMaxBreadcrumbs(int max) {
+        options.maxBreadcrumbs(max);
+    }
+
+    /** Nível mínimo das linhas guardadas no rastro: TRACE, DEBUG, INFO (padrão) ou WARN. */
+    public void setBreadcrumbLevel(String level) {
+        breadcrumbLevel = Level.toLevel(level, Level.INFO);
+    }
+
+    /** Chaves do MDC onde procurar o ID da requisição (traceId), separadas por vírgula. */
+    public void setTraceIdKeys(String keys) {
+        traceIdKeys = keys.split("\\s*,\\s*");
+    }
+
     @Override
     public void start() {
         client = FaroHQ.init(options);
@@ -71,11 +99,24 @@ public class FaroHQAppender extends AppenderBase<ILoggingEvent> {
 
     @Override
     protected void append(ILoggingEvent event) {
-        if (!event.getLevel().isGreaterOrEqual(Level.ERROR)) {
-            return;
-        }
         // Logs do próprio JDK HttpClient não podem gerar novos eventos (laço)
         if (event.getLoggerName().startsWith("jdk.internal.httpclient")) {
+            return;
+        }
+        String traceId = traceId(event.getMDCPropertyMap());
+        if (client.shipsLogs() && event.getLevel().isGreaterOrEqual(logsLevel)) {
+            String msg = event.getFormattedMessage();
+            IThrowableProxy tp = event.getThrowableProxy();
+            if (tp != null) {
+                msg = msg + "\n" + tp.getClassName() + ": " + tp.getMessage();
+            }
+            client.log(event.getLevel().toString(), event.getLoggerName(), msg, traceId, event.getMDCPropertyMap());
+        }
+        if (!event.getLevel().isGreaterOrEqual(Level.ERROR)) {
+            if (event.getLevel().isGreaterOrEqual(breadcrumbLevel)) {
+                client.addBreadcrumb(event.getLevel().toString(), event.getLoggerName(),
+                        event.getFormattedMessage(), traceId);
+            }
             return;
         }
         Throwable error = null;
@@ -90,6 +131,19 @@ public class FaroHQAppender extends AppenderBase<ILoggingEvent> {
             event.getMDCPropertyMap().forEach((k, v) -> context.put("mdc." + k, v));
         }
         // Um evento só: a linha do log como mensagem + a exceção (se houver)
-        client.capture(event.getFormattedMessage(), error, context);
+        client.capture(event.getFormattedMessage(), error, context, traceId);
+    }
+
+    private String traceId(Map<String, String> mdc) {
+        if (mdc == null || mdc.isEmpty()) {
+            return null;
+        }
+        for (String k : traceIdKeys) {
+            String v = mdc.get(k);
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
+        }
+        return null;
     }
 }

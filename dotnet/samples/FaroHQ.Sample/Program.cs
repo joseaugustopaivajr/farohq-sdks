@@ -15,6 +15,8 @@ app.MapGet("/pedidos/{id:int}/fechar", (int id) => new PedidoService().Fechar(id
 // Erro só logado → capturado pelo logger
 app.MapGet("/log-erro", (ILogger<Program> logger) =>
 {
+    logger.LogInformation("Importando planilha de preços (linha {Linha})", 17);
+    logger.LogWarning("Coluna 'preço' vazia em 3 linhas");
     try
     {
         int.Parse("não é número");
@@ -23,7 +25,7 @@ app.MapGet("/log-erro", (ILogger<Program> logger) =>
     {
         logger.LogError(ex, "Falha ao importar planilha de preços");
     }
-    return "Erro logado (veja no FaroHQHQ)";
+    return "Erro logado (veja no FaroHQ)";
 });
 
 // Erro tratado, enviado de propósito

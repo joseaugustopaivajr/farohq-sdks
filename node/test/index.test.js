@@ -9,7 +9,7 @@ function server() {
     let data = "";
     req.on("data", (c) => (data += c));
     req.on("end", () => {
-      received.push({ key: req.headers["x-farohq-key"], body: JSON.parse(data) });
+      received.push({ key: req.headers["x-farohq-key"], path: req.url, body: JSON.parse(data) });
       res.writeHead(202).end();
     });
   });
@@ -55,4 +55,48 @@ test("sem chave não envia e não quebra", async () => {
 test("endpoint fora do ar não lança", async () => {
   farohq.init({ key: "k", endpoint: "http://127.0.0.1:1/fora", captureUnhandled: false });
   await farohq.captureException(new Error("x"));
+});
+
+test("leva o rastro da requisição e o traceId", async () => {
+  const { srv, received, url } = await server();
+  farohq.init({ key: "k", endpoint: url, captureUnhandled: false, captureConsole: true });
+  console.log("fora da requisição");
+  const mw = farohq.expressRequestHandler();
+  await new Promise((done) =>
+    mw({ headers: { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" } }, {}, async () => {
+      console.info("POST /checkout pedido %d", 42);
+      farohq.addBreadcrumb("estoque baixo", "WARN", "estoque");
+      await new Promise((r) => setTimeout(r, 5)); // atravessa o await
+      await farohq.captureException(new Error("sem itens"));
+      done();
+    })
+  );
+  await farohq.flush();
+  srv.close();
+  const b = received[0].body;
+  assert.strictEqual(b.traceId, "4bf92f3577b34da6a3ce929d0e0e4736");
+  assert.deepStrictEqual(b.breadcrumbs.map((c) => c.message), ["POST /checkout pedido 42", "estoque baixo"]);
+  assert.strictEqual(b.breadcrumbs[1].level, "WARN");
+});
+
+test("com shipLogs envia console e farohq.log em lote para /ingest/logs", async () => {
+  const { srv, received, url } = await server();
+  farohq.init({ key: "k", endpoint: url.replace(/ingest$/, "ingest/event"), service: "loja", captureUnhandled: false, shipLogs: true });
+  const mw = farohq.expressRequestHandler();
+  await new Promise((done) =>
+    mw({ headers: { "x-request-id": "req-9" } }, {}, () => {
+      console.debug("debug fica de fora");
+      console.info("Pedido %d pago", 7);
+      farohq.log("warn", "Estoque baixo", { sku: 123 });
+      done();
+    })
+  );
+  await farohq.flush();
+  srv.close();
+  const logs = received.filter((r) => r.path.endsWith("/ingest/logs")).flatMap((r) => r.body);
+  assert.deepStrictEqual(logs.map((l) => l.message), ["Pedido 7 pago", "Estoque baixo"]);
+  assert.strictEqual(logs[0].traceId, "req-9");
+  assert.strictEqual(logs[1].level, "WARN");
+  assert.deepStrictEqual(logs[1].attributes, { sku: 123 });
+  assert.strictEqual(logs[0].service, "loja");
 });

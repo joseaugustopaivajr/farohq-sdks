@@ -23,6 +23,7 @@ public static class FaroHQExtensions
                 o.Endpoint = Env("FAROHQ_ENDPOINT") ?? o.Endpoint;
                 o.Environment = Env("FAROHQ_ENV") ?? o.Environment ?? Env("ASPNETCORE_ENVIRONMENT") ?? "production";
                 o.Release = Env("GIT_SHA") ?? o.Release;
+                o.ShipLogs = Env("FAROHQ_LOGS") == "true" || o.ShipLogs;
                 configure?.Invoke(o);
             });
 
@@ -38,6 +39,8 @@ public static class FaroHQExtensions
         });
         services.AddSingleton<IFaroHQClient, FaroHQClient>();
         services.AddHostedService<FaroHQSender>();
+        services.AddSingleton<FaroHQLogQueue>();
+        services.AddHostedService<FaroHQLogShipper>();
         services.AddSingleton<ILoggerProvider, FaroHQLoggerProvider>();
         return services;
     }

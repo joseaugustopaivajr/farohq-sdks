@@ -25,19 +25,27 @@ class FaroHQClientTest {
     private HttpServer server;
     private final List<String> bodies = new CopyOnWriteArrayList<>();
     private final List<String> keys = new CopyOnWriteArrayList<>();
+    private final List<String> logBodies = new CopyOnWriteArrayList<>();
     private String endpoint;
 
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/ingest", ex -> {
+            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            if (ex.getRequestURI().getPath().endsWith("/logs")) {
+                logBodies.add(body);
+                ex.sendResponseHeaders(202, -1);
+                ex.close();
+                return;
+            }
             keys.add(ex.getRequestHeaders().getFirst("X-FaroHQ-Key"));
-            bodies.add(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            bodies.add(body);
             ex.sendResponseHeaders(202, -1);
             ex.close();
         });
         server.start();
-        endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/ingest";
+        endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/ingest/event";
     }
 
     @AfterEach
@@ -104,6 +112,71 @@ class FaroHQClientTest {
         assertTrue(body.contains("\"message\":\"Falha ao fechar pedido 42\""), body);
         assertTrue(body.contains("java.lang.NullPointerException"), body);
         assertTrue(body.contains("\"logger\":\"loja.pedidos\""), body);
+        logger.detachAppender(appender);
+        appender.stop();
+    }
+
+    @Test
+    void appenderMandaAsLinhasAnterioresEOTraceId() {
+        LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
+        FaroHQAppender appender = new FaroHQAppender();
+        appender.setContext(ctx);
+        appender.setKey("farohq_logback");
+        appender.setEndpoint(endpoint);
+        appender.start();
+        Logger logger = ctx.getLogger("loja.checkout");
+        logger.addAppender(appender);
+
+        org.slf4j.MDC.put("traceId", "req-antiga");
+        logger.info("linha de outra requisição");
+        org.slf4j.MDC.put("traceId", "req-42");
+        logger.debug("debug não entra");
+        logger.info("POST /checkout iniciado");
+        logger.warn("estoque baixo");
+        logger.error("Falha no checkout", new IllegalStateException("sem itens"));
+        org.slf4j.MDC.clear();
+        FaroHQ.client().flush(Duration.ofSeconds(5));
+        sleep(300);
+
+        assertEquals(1, bodies.size());
+        String body = bodies.get(0);
+        assertTrue(body.contains("\"traceId\":\"req-42\""), body);
+        assertTrue(body.contains("\"message\":\"POST /checkout iniciado\""), body);
+        assertTrue(body.contains("\"level\":\"WARN\""), body);
+        assertFalse(body.contains("outra requisição"), body);
+        assertFalse(body.contains("debug não entra"), body);
+        logger.detachAppender(appender);
+        appender.stop();
+    }
+
+    @Test
+    void comShipLogsEnviaAsLinhasEmLote() {
+        LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
+        FaroHQAppender appender = new FaroHQAppender();
+        appender.setContext(ctx);
+        appender.setKey("farohq_logs");
+        appender.setEndpoint(endpoint);
+        appender.setService("loja");
+        appender.setShipLogs(true);
+        appender.start();
+        Logger logger = ctx.getLogger("loja.estoque");
+        logger.addAppender(appender);
+
+        org.slf4j.MDC.put("traceId", "req-7");
+        logger.debug("debug fica de fora");
+        logger.info("Estoque atualizado: SKU {}", 123);
+        logger.warn("Estoque baixo");
+        org.slf4j.MDC.clear();
+        FaroHQ.client().flush(Duration.ofSeconds(5));
+        sleep(2500);
+
+        String all = String.join("", logBodies);
+        assertTrue(all.contains("\"message\":\"Estoque atualizado: SKU 123\""), all);
+        assertTrue(all.contains("\"level\":\"WARN\""), all);
+        assertTrue(all.contains("\"traceId\":\"req-7\""), all);
+        assertTrue(all.contains("\"service\":\"loja\""), all);
+        assertFalse(all.contains("debug fica de fora"), all);
+        assertTrue(bodies.isEmpty(), "linhas sem erro não viram evento de erro");
         logger.detachAppender(appender);
         appender.stop();
     }

@@ -22,6 +22,7 @@ internal sealed class FaroHQClient : IFaroHQClient
         _queue = queue;
         _options = options.Value;
         _service = _options.Service ?? Assembly.GetEntryAssembly()?.GetName().Name;
+        FaroHQBreadcrumbs.Max = Math.Clamp(_options.MaxBreadcrumbs, 0, 100);
     }
 
     public void CaptureException(Exception exception, IReadOnlyDictionary<string, string?>? context = null)
@@ -56,7 +57,9 @@ internal sealed class FaroHQClient : IFaroHQClient
                 Exception: exception is null
                     ? null
                     : new FaroHQException(exception.GetType().FullName ?? exception.GetType().Name, exception.Message, exception.ToString()),
-                Context: context);
+                Context: context,
+                TraceId: FaroHQBreadcrumbs.TraceId,
+                Breadcrumbs: _options.MaxBreadcrumbs > 0 ? FaroHQBreadcrumbs.Snapshot() : null);
             _queue.Writer.TryWrite(evt);
         }
         catch

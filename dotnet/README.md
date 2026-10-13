@@ -39,7 +39,7 @@ Configuração (`appsettings.json` ou variáveis de ambiente, que têm prioridad
 | `FAROHQ_KEY` | Chave de ingestão do projeto (obrigatória; sem ela nada é enviado) |
 | `FAROHQ_ENDPOINT` | URL de ingestão |
 | `FAROHQ_ENV` | Ambiente (padrão: `ASPNETCORE_ENVIRONMENT`) |
-| `GIT_SHA` | Commit do deploy: é com ele que a IA lê o código certo |
+| `GIT_SHA` | Commit do deploy: é com ele que o FaroHQ lê o código certo |
 
 ## Exemplo
 
@@ -50,3 +50,12 @@ curl http://localhost:5090/pedidos/42/fechar   # NullReferenceException não tra
 curl http://localhost:5090/log-erro            # FormatException logada
 curl http://localhost:5090/captura-manual      # captura manual
 ```
+
+## Logs (opcional)
+
+Além dos erros, o FaroHQ guarda os logs da aplicação: busca, filtros, ao vivo e a requisição
+inteira (pelo traceId) ao lado do erro. Para ligar, defina `FAROHQ_LOGS=true`. As linhas vão em
+lote, a cada 2 segundos, numa thread de fundo; com o FaroHQ fora do ar, elas são descartadas e a
+aplicação segue normalmente. O pacote grátis inclui 1 GB por mês, guardado por 3 dias.
+
+No `appsettings.json`: `"FaroHQ": { "ShipLogs": true, "LogsLevel": "Information" }`.

@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { format } from "node:util";
+
 /**
  * FaroHQ para Node.js. Sem dependências: usa o fetch nativo (Node 18+).
  * Capturar nunca lança exceção nem atrasa a requisição.
@@ -10,7 +13,7 @@ export interface FaroHQOptions {
   endpoint?: string;
   /** Padrão: FAROHQ_ENV, NODE_ENV ou "production". */
   environment?: string;
-  /** SHA do commit do deploy (padrão: GIT_SHA): é com ele que a IA lê o código certo. */
+  /** SHA do commit do deploy (padrão: GIT_SHA): é com ele que o FaroHQ lê o código certo. */
   release?: string;
   /** Nome do serviço que aparece no FaroHQ. */
   service?: string;
@@ -18,6 +21,29 @@ export interface FaroHQOptions {
   captureUnhandled?: boolean;
   /** Desliga o envio sem tirar o código. */
   enabled?: boolean;
+  /** Quantas linhas de log anteriores ao erro vão junto (0 desliga). Padrão: 30. */
+  maxBreadcrumbs?: number;
+  /** Guarda console.log/info/warn/error/debug no rastro (padrão: true). */
+  captureConsole?: boolean;
+  /**
+   * Envia também todos os logs (console e farohq.log) para o módulo de Logs do FaroHQ.
+   * Padrão: FAROHQ_LOGS=true ou desligado.
+   */
+  shipLogs?: boolean;
+  /** Nível mínimo das linhas enviadas ao módulo de Logs (padrão: INFO). */
+  logsLevel?: "DEBUG" | "INFO" | "WARN" | "ERROR";
+}
+
+export interface Breadcrumb {
+  timestamp: string;
+  level: string;
+  logger?: string;
+  message: string;
+}
+
+interface Scope {
+  traceId?: string;
+  crumbs: Breadcrumb[];
 }
 
 export type Context = Record<string, string | number | boolean | null | undefined>;
@@ -31,12 +57,25 @@ interface Resolved {
   release?: string;
   service?: string;
   enabled: boolean;
+  maxBreadcrumbs: number;
+  shipLogs: boolean;
+  logsLevel: number;
 }
 
+const LEVEL_RANK: Record<string, number> = { TRACE: 0, DEBUG: 1, INFO: 2, WARN: 3, ERROR: 4, FATAL: 5 };
 let config: Resolved = resolve({});
+const logQueue: object[] = [];
+let logTimer: NodeJS.Timeout | null = null;
+const LOG_BATCH = 500;
+const LOG_QUEUE_MAX = 10_000;
 const pending = new Set<Promise<void>>();
 const captured = new WeakSet<object>();
 let handlersInstalled = false;
+let consolePatched = false;
+/** Rastro por requisição (AsyncLocalStorage); fora de uma requisição, um rastro global. */
+const scopes = new AsyncLocalStorage<Scope>();
+const globalScope: Scope = { crumbs: [] };
+const GLOBAL_MAX_AGE_MS = 5 * 60 * 1000;
 
 function resolve(o: FaroHQOptions): Resolved {
   const env = process.env;
@@ -47,12 +86,19 @@ function resolve(o: FaroHQOptions): Resolved {
     release: o.release ?? env.GIT_SHA,
     service: o.service,
     enabled: o.enabled ?? true,
+    maxBreadcrumbs: Math.max(0, Math.min(o.maxBreadcrumbs ?? 30, 100)),
+    shipLogs: o.shipLogs ?? env.FAROHQ_LOGS === "true",
+    logsLevel: LEVEL_RANK[o.logsLevel ?? "INFO"],
   };
 }
 
 /** Configura o FaroHQ. Chame uma vez, no começo da aplicação. */
 export function init(options: FaroHQOptions = {}): void {
   config = resolve(options);
+  if (options.captureConsole !== false && !consolePatched) {
+    consolePatched = true;
+    patchConsole();
+  }
   if (options.captureUnhandled !== false && !handlersInstalled) {
     handlersInstalled = true;
     process.on("unhandledRejection", (reason) => {
@@ -81,8 +127,134 @@ export function captureMessage(message: string, context?: Context): Promise<void
   return send({ message, context });
 }
 
+/**
+ * Envia uma linha para o módulo de Logs (se shipLogs estiver ligado). Vai em lote, a cada 2s.
+ * O console já é enviado sozinho; use para logs estruturados com atributos.
+ */
+export function log(level: string, message: string, attributes?: Record<string, unknown>, logger?: string): void {
+  if (!config.shipLogs || !config.enabled || !config.key) return;
+  const lvl = level.toUpperCase();
+  if ((LEVEL_RANK[lvl] ?? 2) < config.logsLevel) return;
+  if (logQueue.length >= LOG_QUEUE_MAX) return; // fila cheia: descarta, nunca segura a aplicação
+  logQueue.push({
+    timestamp: new Date().toISOString(),
+    level: lvl,
+    logger,
+    message: String(message).slice(0, 32_000),
+    service: config.service,
+    environment: config.environment,
+    release: config.release,
+    traceId: scopes.getStore()?.traceId,
+    attributes,
+  });
+  if (logQueue.length >= LOG_BATCH) void shipLogs();
+  else if (!logTimer) {
+    logTimer = setTimeout(() => void shipLogs(), 2000);
+    logTimer.unref?.();
+  }
+}
+
+function shipLogs(): Promise<void> {
+  if (logTimer) {
+    clearTimeout(logTimer);
+    logTimer = null;
+  }
+  if (!logQueue.length || !config.key) return Promise.resolve();
+  const batch = logQueue.splice(0, LOG_BATCH);
+  const url = config.endpoint.replace(/\/ingest\/event\/?$/, "/ingest/logs");
+  const p = fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-FaroHQ-Key": config.key, "User-Agent": "farohq-node/0.2.0" },
+    body: JSON.stringify(batch),
+    signal: AbortSignal.timeout(10000),
+  })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      pending.delete(p);
+      if (logQueue.length) void shipLogs();
+    });
+  pending.add(p);
+  return p;
+}
+
+/** Guarda uma linha no rastro da requisição atual; vai junto com o próximo erro. */
+export function addBreadcrumb(message: string, level = "INFO", logger?: string): void {
+  if (config.maxBreadcrumbs <= 0) return;
+  const scope = scopes.getStore() ?? globalScope;
+  scope.crumbs.push({ timestamp: new Date().toISOString(), level, logger, message: String(message).slice(0, 1000) });
+  if (scope.crumbs.length > config.maxBreadcrumbs) scope.crumbs.splice(0, scope.crumbs.length - config.maxBreadcrumbs);
+}
+
+/**
+ * Roda fn com um rastro próprio (uma requisição, um job). Os logs e o erro lá dentro ficam juntos
+ * e levam o traceId, que liga o erro aos logs na sua ferramenta (Datadog, Grafana...).
+ */
+export function withScope<T>(fn: () => T, traceId?: string): T {
+  return scopes.run({ traceId, crumbs: [] }, fn);
+}
+
+/** ID da requisição atual, se houver. */
+export function currentTraceId(): string | undefined {
+  return scopes.getStore()?.traceId;
+}
+
+/**
+ * Middleware do Express que abre um rastro por requisição. Coloque ANTES das rotas:
+ *   app.use(farohq.expressRequestHandler());
+ * O traceId vem dos cabeçalhos traceparent, x-request-id ou x-amzn-trace-id.
+ */
+export function expressRequestHandler() {
+  return (req: { headers?: Record<string, string | string[] | undefined> }, _res: unknown, next: () => void) => {
+    withScope(next, traceIdFromHeaders(req.headers ?? {}));
+  };
+}
+
+export function traceIdFromHeaders(headers: Record<string, string | string[] | undefined>): string | undefined {
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const tp = one(headers["traceparent"]);
+  if (tp) {
+    const parts = tp.split("-");
+    if (parts.length >= 3 && parts[1].length === 32) return parts[1];
+  }
+  return one(headers["x-request-id"]) ?? one(headers["x-correlation-id"]) ?? one(headers["x-amzn-trace-id"]);
+}
+
+function currentCrumbs(): { traceId?: string; breadcrumbs?: Breadcrumb[] } {
+  const scope = scopes.getStore();
+  if (scope) return { traceId: scope.traceId, breadcrumbs: scope.crumbs.length ? [...scope.crumbs] : undefined };
+  const cutoff = Date.now() - GLOBAL_MAX_AGE_MS;
+  const recent = globalScope.crumbs.filter((c) => Date.parse(c.timestamp) >= cutoff);
+  return { breadcrumbs: recent.length ? recent : undefined };
+}
+
+function patchConsole(): void {
+  const levels: Array<[keyof Console, string]> = [
+    ["debug", "DEBUG"],
+    ["log", "INFO"],
+    ["info", "INFO"],
+    ["warn", "WARN"],
+    ["error", "ERROR"],
+  ];
+  for (const [method, level] of levels) {
+    const original = console[method] as (...args: unknown[]) => void;
+    if (typeof original !== "function") continue;
+    (console as unknown as Record<string, unknown>)[method] = function (this: Console, ...args: unknown[]) {
+      try {
+        const text = format(...args);
+        addBreadcrumb(text, level, "console");
+        log(level, text, undefined, "console");
+      } catch {
+        // nunca atrapalha o log
+      }
+      return original.apply(this, args);
+    };
+  }
+}
+
 /** Espera os envios em andamento (use antes de encerrar processos curtos, ex.: scripts e lambdas). */
 export async function flush(timeoutMs = 5000): Promise<void> {
+  if (logQueue.length) void shipLogs();
   await Promise.race([Promise.allSettled([...pending]), new Promise((r) => setTimeout(r, timeoutMs))]);
 }
 
@@ -117,6 +289,7 @@ function send(payload: { message?: string; exception?: object; context?: Context
     release: config.release,
     service: config.service,
     timestamp: new Date().toISOString(),
+    ...(config.maxBreadcrumbs > 0 ? currentCrumbs() : {}),
     ...payload,
   });
   const p = fetch(config.endpoint, {
@@ -132,4 +305,16 @@ function send(payload: { message?: string; exception?: object; context?: Context
   return p;
 }
 
-export default { init, captureException, captureMessage, flush, expressErrorHandler, onRequestError };
+export default {
+  init,
+  captureException,
+  captureMessage,
+  addBreadcrumb,
+  log,
+  withScope,
+  currentTraceId,
+  flush,
+  expressRequestHandler,
+  expressErrorHandler,
+  onRequestError,
+};

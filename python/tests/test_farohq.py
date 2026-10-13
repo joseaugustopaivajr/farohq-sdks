@@ -15,7 +15,7 @@ RECEIVED = []
 class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers["Content-Length"]))
-        RECEIVED.append({"key": self.headers.get("X-FaroHQ-Key"), "body": json.loads(body)})
+        RECEIVED.append({"key": self.headers.get("X-FaroHQ-Key"), "path": self.path, "body": json.loads(body)})
         self.send_response(202)
         self.end_headers()
 
@@ -28,7 +28,7 @@ class FaroHQTest(unittest.TestCase):
     def setUpClass(cls):
         cls.server = HTTPServer(("127.0.0.1", 0), _Handler)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
-        cls.url = "http://127.0.0.1:%d/ingest" % cls.server.server_address[1]
+        cls.url = "http://127.0.0.1:%d/ingest/event" % cls.server.server_address[1]
 
     @classmethod
     def tearDownClass(cls):
@@ -63,6 +63,52 @@ class FaroHQTest(unittest.TestCase):
         msgs = [r["body"]["message"] for r in RECEIVED]
         self.assertEqual(msgs, ["Falha ao calcular total"])
         self.assertEqual(RECEIVED[0]["body"]["exception"]["type"], "ZeroDivisionError")
+
+    def test_rastro_da_requisicao_e_trace_id(self):
+        logging.getLogger().setLevel(logging.INFO)
+        log = logging.getLogger("loja.checkout")
+        log.info("linha antiga fora do scope")
+        with farohq.scope(trace_id="req-42"):
+            log.debug("debug não entra")
+            log.info("POST /checkout pedido %d", 42)
+            log.warning("estoque baixo")
+            log.error("Falha no checkout")
+        farohq.flush()
+        b = RECEIVED[0]["body"]
+        self.assertEqual(b["traceId"], "req-42")
+        self.assertEqual([c["message"] for c in b["breadcrumbs"]], ["POST /checkout pedido 42", "estoque baixo"])
+        self.assertEqual(b["breadcrumbs"][1]["level"], "WARNING")
+
+    def test_asgi_middleware_le_traceparent(self):
+        import asyncio
+
+        async def app(scope_, receive, send):
+            farohq.add_breadcrumb("dentro da rota")
+            farohq.capture_message("falhou")
+
+        mw = farohq.FaroHQASGIMiddleware(app)
+        tp = b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        asyncio.run(mw({"type": "http", "headers": [(b"traceparent", tp)]}, None, None))
+        farohq.flush()
+        b = RECEIVED[0]["body"]
+        self.assertEqual(b["traceId"], "4bf92f3577b34da6a3ce929d0e0e4736")
+        self.assertEqual(b["breadcrumbs"][0]["message"], "dentro da rota")
+
+    def test_ship_logs_envia_linhas_em_lote(self):
+        farohq.init(key="k", endpoint=self.url, service="loja", capture_unhandled=False, ship_logs=True)
+        logging.getLogger().setLevel(logging.DEBUG)
+        log = logging.getLogger("loja.estoque")
+        with farohq.scope(trace_id="req-5"):
+            log.debug("debug fica de fora")
+            log.info("Estoque atualizado: SKU %d", 123)
+            farohq.log("warn", "Estoque baixo", {"sku": 123})
+        farohq.flush(5)
+        lines = [l for r in RECEIVED if r["path"].endswith("/ingest/logs") for l in r["body"]]
+        self.assertEqual([l["message"] for l in lines], ["Estoque atualizado: SKU 123", "Estoque baixo"])
+        self.assertEqual(lines[0]["traceId"], "req-5")
+        self.assertEqual(lines[1]["level"], "WARN")
+        self.assertEqual(lines[1]["attributes"], {"sku": 123})
+        self.assertFalse([r for r in RECEIVED if r["path"].endswith("/ingest/event")])
 
     def test_sem_chave_nao_envia(self):
         farohq.init(key="", endpoint=self.url, capture_unhandled=False)
