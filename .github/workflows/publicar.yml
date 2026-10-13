@@ -146,6 +146,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.pacote == 'todos' || inputs.pacote == 'dotnet')) ||
       startsWith(github.ref, 'refs/tags/dotnet-v')
     runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write } # Trusted Publishing do NuGet (sem chave guardada)
     defaults: { run: { working-directory: dotnet } }
     steps:
       - uses: actions/checkout@v4
@@ -160,5 +161,9 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
       - run: dotnet build samples/FaroHQ.Sample -c Release
       - run: dotnet pack src/FaroHQ.AspNetCore -c Release -o out -p:Version=${{ steps.v.outputs.version }}
-      - run: dotnet nuget push "out/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Login no NuGet (chave temporária)
+        uses: NuGet/login@v1
+        id: nuget
+        with: { user: "${{ vars.NUGET_USER }}" }
+      - run: dotnet nuget push "out/*.nupkg" --api-key "${{ steps.nuget.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
       - run: echo "### FaroHQ.AspNetCore ${{ steps.v.outputs.version }} publicado — https://www.nuget.org/packages/FaroHQ.AspNetCore (indexa em ~15 min)" >> "$GITHUB_STEP_SUMMARY"

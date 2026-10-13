@@ -122,11 +122,22 @@ O ambiente `pypi` já existe no GitHub e só aceita publicação a partir da `ma
 
 ### NuGet (.NET)
 
+Também não usa chave guardada: o NuGet confia no GitHub (Trusted Publishing) e a action pega uma
+chave temporária, válida por 1 hora, na hora de publicar.
+
 1. Entre em <https://www.nuget.org> com uma conta Microsoft.
-2. **API Keys → Create**: escopo **Push new packages and package versions**, glob pattern
-   **`FaroHQ.*`**, validade de 365 dias (renove todo ano).
-3. ```bash
-   gh secret set NUGET_API_KEY -R joseaugustopaivajr/farohq-sdks
+2. **Seu usuário → Trusted Publishing → Add a new policy**:
+
+   | Campo | Valor |
+   |---|---|
+   | Repository Owner | `joseaugustopaivajr` |
+   | Repository | `farohq-sdks` |
+   | Workflow File | `publicar.yml` |
+   | Environment | (vazio) |
+
+3. Informe o **nome de usuário** do NuGet (o do perfil, não o e-mail) numa variável do repositório:
+   ```bash
+   gh variable set NUGET_USER -R joseaugustopaivajr/farohq-sdks --body "SEU_USUARIO_NUGET"
    ```
 
 ## Conferir os segredos
