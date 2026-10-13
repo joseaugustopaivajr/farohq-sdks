@@ -3,10 +3,18 @@
 Envia os erros de aplicações Java (Spring Boot, Quarkus, Micronaut, qualquer app com Logback)
 para o [FaroHQ](https://farohq.com.br), que agrupa, tria e analisa a causa raiz lendo o seu código.
 
-**Gradle**
+Funciona em **Java e Kotlin** (Java 11+).
+
+**Gradle (Kotlin DSL)**
+
+```kotlin
+implementation("br.com.farohq:farohq-java:0.2.0")
+```
+
+**Gradle (Groovy)**
 
 ```groovy
-implementation 'br.com.farohq:farohq-java:0.1.0'
+implementation 'br.com.farohq:farohq-java:0.2.0'
 ```
 
 **Maven**
@@ -15,27 +23,74 @@ implementation 'br.com.farohq:farohq-java:0.1.0'
 <dependency>
   <groupId>br.com.farohq</groupId>
   <artifactId>farohq-java</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
-## Spring Boot / Logback
+## Spring Boot
 
-`src/main/resources/logback-spring.xml`:
+**1. `src/main/resources/application.properties`** (a chave vem de variável de ambiente; não grave
+a chave no repositório):
+
+```properties
+farohq.key=${FAROHQ_KEY:}
+farohq.service=minha-api
+farohq.environment=${FAROHQ_ENV:production}
+farohq.release=${GIT_SHA:}
+```
+
+Ou no `application.yml`:
+
+```yaml
+farohq:
+  key: ${FAROHQ_KEY:}
+  service: minha-api
+  environment: ${FAROHQ_ENV:production}
+  release: ${GIT_SHA:}
+```
+
+**2. `src/main/resources/logback-spring.xml`** (lê as configurações acima):
 
 ```xml
 <configuration>
   <include resource="org/springframework/boot/logging/logback/base.xml"/>
+
+  <springProperty scope="context" name="farohqKey" source="farohq.key" defaultValue=""/>
+  <springProperty scope="context" name="farohqService" source="farohq.service" defaultValue=""/>
+  <springProperty scope="context" name="farohqEnv" source="farohq.environment" defaultValue="production"/>
+  <springProperty scope="context" name="farohqRelease" source="farohq.release" defaultValue=""/>
+  <springProperty scope="context" name="farohqEndpoint" source="farohq.endpoint" defaultValue=""/>
+
   <appender name="FAROHQ" class="br.com.farohq.logback.FaroHQAppender">
-    <service>minha-api</service>
+    <key>${farohqKey}</key>
+    <service>${farohqService}</service>
+    <environment>${farohqEnv}</environment>
+    <release>${farohqRelease}</release>
+    <endpoint>${farohqEndpoint}</endpoint>
   </appender>
+
   <root level="INFO">
     <appender-ref ref="FAROHQ"/>
   </root>
 </configuration>
 ```
 
-Tudo que for logado com nível `ERROR` (inclusive exceções não tratadas do Spring) vira evento.
+**3.** No deploy, defina `FAROHQ_KEY` (a chave do projeto no FaroHQ) e `GIT_SHA` (o commit, para a
+análise ler o código certo).
+
+Tudo que for logado com nível `ERROR` (inclusive exceções não tratadas do Spring) vira evento, com
+as linhas de log anteriores da mesma requisição. Campos em branco no `application.properties` caem
+nas variáveis de ambiente (`FAROHQ_KEY`, `FAROHQ_ENV`, `GIT_SHA`, `FAROHQ_ENDPOINT`).
+
+### Sem Spring (Logback puro)
+
+```xml
+<appender name="FAROHQ" class="br.com.farohq.logback.FaroHQAppender">
+  <service>minha-api</service>
+</appender>
+```
+
+Chave e versão vêm de `FAROHQ_KEY` e `GIT_SHA`.
 
 ## Sem Logback
 
