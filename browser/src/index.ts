@@ -1,7 +1,7 @@
 /**
  * FaroHQ no navegador. Sem dependências.
  *
- *   import * as farohq from "@farohq/browser";
+ *   import * as farohq from "@farohqbr/browser";
  *   farohq.init({ publicKey: "farohq_pk_...", release: process.env.NEXT_PUBLIC_GIT_SHA });
  *
  * - Erros de JavaScript e promises rejeitadas, com o que o usuário fez antes (cliques, navegação,

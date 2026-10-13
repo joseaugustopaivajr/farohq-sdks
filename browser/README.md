@@ -1,4 +1,4 @@
-# @farohq/browser
+# @farohqbr/browser
 
 Monitoramento do front para o [FaroHQ](https://farohq.com.br):
 
@@ -15,11 +15,11 @@ Sem dependências. Nada aqui quebra o site: toda captura é protegida e o envio 
 ## Instalar
 
 ```bash
-npm install @farohq/browser
+npm install @farohqbr/browser
 ```
 
 ```ts
-import * as farohq from "@farohq/browser";
+import * as farohq from "@farohqbr/browser";
 
 farohq.init({
   publicKey: "farohq_pk_...",            // chave PÚBLICA do projeto (pode ir no código do site)
@@ -32,7 +32,7 @@ farohq.init({
 Sem bundler:
 
 ```html
-<script src="https://unpkg.com/@farohq/browser/dist/farohq.global.js"></script>
+<script src="https://unpkg.com/@farohqbr/browser/dist/farohq.global.js"></script>
 <script>FaroHQ.init({ publicKey: "farohq_pk_..." });</script>
 ```
 

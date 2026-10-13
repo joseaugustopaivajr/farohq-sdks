@@ -5,8 +5,8 @@ Os pacotes saem deste repositório para os registros públicos, onde os clientes
 | Pacote | Registro | Instalação do cliente |
 |---|---|---|
 | Java / Kotlin (`java/`) | Maven Central | `implementation("br.com.farohq:farohq-java:VERSÃO")` |
-| Node.js (`node/`) | npm | `npm install @farohq/node` |
-| Navegador (`browser/`) | npm | `npm install @farohq/browser` |
+| Node.js (`node/`) | npm | `npm install @farohqbr/node` |
+| Navegador (`browser/`) | npm | `npm install @farohqbr/browser` |
 | Python (`python/`) | PyPI | `pip install farohq` |
 | .NET (`dotnet/`) | NuGet | `dotnet add package FaroHQ.AspNetCore` |
 
@@ -93,9 +93,9 @@ Cada registro precisa de uma conta do FaroHQ e de um segredo no GitHub
 
 ### npm (Node e Navegador)
 
-1. Crie a conta em <https://www.npmjs.com> e a organização **`farohq`** (plano grátis, pacotes públicos).
+1. Crie a conta em <https://www.npmjs.com> e a organização **`farohqbr`** (o escopo `@farohq` pertence a outra empresa) (plano grátis, pacotes públicos).
 2. **Access Tokens → Generate New Token → Granular**: permissão **Read and write** só para a
-   organização `farohq`, validade longa.
+   organização `farohqbr`, validade longa.
 3. ```bash
    gh secret set NPM_TOKEN -R joseaugustopaivajr/farohq-sdks
    ```
@@ -144,7 +144,7 @@ Devem aparecer: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY
 |---|---|
 | Maven: `namespace not verified` | O TXT do Maven Central ainda não está no DNS de `farohq.com.br` |
 | Maven: `Invalid signature` / `Could not find a public key` | A chave pública não está no keyserver: reenvie com `--send-keys` |
-| npm: `403 Forbidden` | Token sem permissão de escrita na organização `farohq`, ou versão já publicada |
+| npm: `403 Forbidden` | Token sem permissão de escrita na organização `farohqbr`, ou versão já publicada |
 | npm: `provenance ... private repository` | O repositório deixou de ser público |
 | PyPI: `invalid-publisher` | Algum campo do pending publisher não bate (workflow tem que ser `publicar.yml`, ambiente `pypi`) |
 | NuGet: `409 Conflict` | Versão já publicada (o workflow ignora com `--skip-duplicate`, suba a versão) |

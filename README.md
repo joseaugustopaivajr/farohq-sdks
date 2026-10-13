@@ -3,10 +3,10 @@
 | Linguagem | Pacote | Pasta |
 |---|---|---|
 | Java (Spring Boot, Logback) | `br.com.farohq:farohq-java` (Maven Central) | `java/` |
-| Node.js (Express, Next.js) | `@farohq/node` (npm) | `node/` |
+| Node.js (Express, Next.js) | `@farohqbr/node` (npm) | `node/` |
 | Python (Django, Flask, FastAPI) | `farohq` (PyPI) | `python/` |
 | .NET (ASP.NET Core) | `FaroHQ.AspNetCore` (NuGet) | `dotnet/` |
-| Navegador (React, Next, Vue...) | `@farohq/browser` (npm) | `browser/` |
+| Navegador (React, Next, Vue...) | `@farohqbr/browser` (npm) | `browser/` |
 
 Todas seguem o mesmo contrato: `POST /ingest/event` com o header `X-FaroHQ-Key`, fila em memória,
 envio em segundo plano, nunca derrubam a aplicação e não têm dependências obrigatórias.

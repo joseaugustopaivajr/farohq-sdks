@@ -271,7 +271,7 @@ export function expressErrorHandler() {
 
 /**
  * Next.js 15+ (instrumentation.ts):
- *   export { onRequestError } from "@farohq/node";
+ *   export { onRequestError } from "@farohqbr/node";
  */
 export async function onRequestError(
   err: unknown,

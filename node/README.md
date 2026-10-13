@@ -1,14 +1,14 @@
-# @farohq/node
+# @farohqbr/node
 
 Envia os erros de aplicações Node.js (Express, Next.js, Fastify, workers) para o
 [FaroHQ](https://farohq.com.br), que agrupa, tria e analisa a causa raiz lendo o seu código.
 
 ```bash
-npm install @farohq/node
+npm install @farohqbr/node
 ```
 
 ```js
-const farohq = require("@farohq/node");
+const farohq = require("@farohqbr/node");
 
 farohq.init({ service: "minha-api" }); // chave em FAROHQ_KEY
 
@@ -19,7 +19,7 @@ app.use(farohq.expressErrorHandler());
 **Next.js 15+** (`instrumentation.ts` na raiz):
 
 ```ts
-export { onRequestError } from "@farohq/node";
+export { onRequestError } from "@farohqbr/node";
 ```
 
 Erros tratados:

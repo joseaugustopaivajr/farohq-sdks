@@ -1,27 +1,56 @@
 {
-  "name": "@farohq/browser",
+  "name": "@farohqbr/browser",
   "version": "0.1.0",
   "description": "FaroHQ no navegador: erros de JavaScript com o código original (source maps), o que o usuário fez antes do erro, ligação com o backend pelo traceId e desempenho real das páginas (Web Vitals).",
   "license": "MIT",
   "homepage": "https://farohq.com.br",
-  "keywords": ["farohq", "error-tracking", "rum", "web-vitals", "observability", "monitoring", "browser", "react", "nextjs", "vue"],
+  "keywords": [
+    "farohq",
+    "error-tracking",
+    "rum",
+    "web-vitals",
+    "observability",
+    "monitoring",
+    "browser",
+    "react",
+    "nextjs",
+    "vue"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "default": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
-  "bin": { "farohq-sourcemaps": "bin/farohq-sourcemaps.mjs" },
-  "files": ["dist", "bin", "README.md"],
+  "bin": {
+    "farohq-sourcemaps": "bin/farohq-sourcemaps.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-global.mjs",
     "test": "npm run build && node --test test/browser.test.js test/sourcemaps-cli.test.js"
   },
-  "publishConfig": { "access": "public", "provenance": true },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "devDependencies": {
     "jsdom": "^25",
     "typescript": "^5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joseaugustopaivajr/farohq-sdks.git",
+    "directory": "browser"
   }
 }

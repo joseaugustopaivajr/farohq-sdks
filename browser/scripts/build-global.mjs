@@ -9,6 +9,6 @@ let body = esm
     names.push(name);
     return `${kind} ${name}`;
   });
-const out = `/*! @farohq/browser — MIT */\n(function () {\n${body}\nwindow.FaroHQ = { ${names.join(", ")} };\n})();\n`;
+const out = `/*! @farohqbr/browser — MIT */\n(function () {\n${body}\nwindow.FaroHQ = { ${names.join(", ")} };\n})();\n`;
 writeFileSync(new URL("../dist/farohq.global.js", import.meta.url), out);
 console.log("dist/farohq.global.js:", names.join(", "));

@@ -1,21 +1,42 @@
 {
-  "name": "@farohq/node",
+  "name": "@farohqbr/node",
   "version": "0.2.0",
   "description": "Envia os erros de aplicações Node.js (Express, Next.js, Fastify...) para o FaroHQ: análise de causa raiz lendo o seu código.",
   "license": "MIT",
   "homepage": "https://farohq.com.br",
-  "keywords": ["farohq", "error-tracking", "observability", "monitoring", "express", "nextjs", "ai"],
+  "keywords": [
+    "farohq",
+    "error-tracking",
+    "observability",
+    "monitoring",
+    "express",
+    "nextjs",
+    "ai"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "README.md"],
-  "engines": { "node": ">=18" },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/index.test.js"
   },
-  "publishConfig": { "access": "public", "provenance": true },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "devDependencies": {
     "@types/node": "^20",
     "typescript": "^5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joseaugustopaivajr/farohq-sdks.git",
+    "directory": "node"
   }
 }

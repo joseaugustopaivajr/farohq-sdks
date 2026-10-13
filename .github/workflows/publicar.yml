@@ -87,7 +87,7 @@ jobs:
       - run: npm test
       - run: npm publish --provenance --access public
         env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
-      - run: echo "### @farohq/node ${{ steps.v.outputs.version }} publicado — https://www.npmjs.com/package/@farohq/node" >> "$GITHUB_STEP_SUMMARY"
+      - run: echo "### @farohqbr/node ${{ steps.v.outputs.version }} publicado — https://www.npmjs.com/package/@farohqbr/node" >> "$GITHUB_STEP_SUMMARY"
 
   browser:
     if: >-
@@ -112,7 +112,7 @@ jobs:
       - run: npm test
       - run: npm publish --provenance --access public
         env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
-      - run: echo "### @farohq/browser ${{ steps.v.outputs.version }} publicado — https://www.npmjs.com/package/@farohq/browser" >> "$GITHUB_STEP_SUMMARY"
+      - run: echo "### @farohqbr/browser ${{ steps.v.outputs.version }} publicado — https://www.npmjs.com/package/@farohqbr/browser" >> "$GITHUB_STEP_SUMMARY"
 
   python:
     if: >-
