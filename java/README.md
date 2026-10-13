@@ -1,6 +1,7 @@
 # farohq-java
 
-Envia os erros de aplicações Java (Spring Boot, Quarkus, Micronaut, qualquer app com Logback)
+Envia os erros de aplicações Java e Kotlin (Spring Boot, Micronaut, qualquer app com Logback;
+Quarkus e outros sem Logback pela API `FaroHQ.captureException`, veja "Sem Logback")
 para o [FaroHQ](https://farohq.com.br), que agrupa, tria e analisa a causa raiz lendo o seu código.
 
 Funciona em **Java e Kotlin** (Java 11+).
