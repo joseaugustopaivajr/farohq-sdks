@@ -63,3 +63,20 @@ FAROHQ_KEY=farohq_... npx farohq-sourcemaps upload .next/static --url-prefix /_n
 | `flush()` | Envia na hora o que estiver na fila |
 
 Licença MIT.
+
+## Gravação de sessão (opcional)
+
+Veja o que o usuário fez antes do erro, como um vídeo, na página do erro no FaroHQ:
+
+```js
+farohq.init({
+  publicKey: "farohq_pk_...",
+  replay: { enabled: true },
+});
+```
+
+- Por padrão grava só o **último minuto antes de cada erro** (e 10 s depois); nada é enviado se não houver erro.
+- `replay.sessionSampleRate: 0.1` grava 10% das sessões inteiras.
+- **Privacidade:** campos de formulário são sempre mascarados e todo texto da página também, por padrão
+  (`maskAllText: false` para mostrar textos). Marque áreas sensíveis com `data-farohq-block` para nunca gravá-las.
+- O gravador (rrweb, MIT) só é baixado quando a gravação está ligada.

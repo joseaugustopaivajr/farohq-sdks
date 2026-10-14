@@ -42,7 +42,24 @@ export interface BrowserOptions {
   rumSampleRate?: number;
   /** Último filtro antes de enviar um erro: devolva null para descartar. */
   beforeSend?: (event: ErrorEvent) => ErrorEvent | null;
+  /**
+   * Gravação da sessão (desligada por padrão). Com ela ligada, o FaroHQ guarda o último minuto do
+   * que o usuário fez e envia junto com o erro; textos e campos ficam mascarados por padrão.
+   */
+  replay?: ReplayOptions;
   enabled?: boolean;
+}
+
+export interface ReplayOptions {
+  enabled?: boolean;
+  /** Fração das sessões gravadas inteiras (padrão: 0 = só o minuto antes de cada erro). */
+  sessionSampleRate?: number;
+  /** Mascara todo texto da página (padrão: true). Campos de formulário sempre ficam mascarados. */
+  maskAllText?: boolean;
+  /** Seletor CSS de áreas que nunca são gravadas (padrão: "[data-farohq-block]"). */
+  blockSelector?: string;
+  /** Onde baixar o gravador (padrão: servido pelo FaroHQ). */
+  scriptUrl?: string;
 }
 
 export interface Breadcrumb {
@@ -108,6 +125,7 @@ export function init(options: BrowserOptions): void {
     shipLogs: options.shipLogs === true,
     beforeSend: options.beforeSend,
   };
+  replayOptions = options.replay?.enabled ? options.replay : null;
   if (installed) return;
   installed = true;
   nativeFetch = window.fetch ? window.fetch.bind(window) : null;
@@ -118,6 +136,7 @@ export function init(options: BrowserOptions): void {
   safe(installXhr);
   if (options.captureConsole !== false) safe(installConsole);
   if (options.rum !== false && sampled(options.rumSampleRate ?? 1)) safe(startRum);
+  if (replayOptions) safe(startReplay);
   safe(() => {
     const flushAll = () => {
       flushRum();
@@ -175,6 +194,8 @@ function send(e: { message: string; level: string; exception?: ErrorEvent["excep
     traceId: failure,
     context: { ...context, ...(e.extra ?? {}), screen: `${window.innerWidth}x${window.innerHeight}` },
   };
+  const replayId = replayForError();
+  if (replayId) event.context = { ...event.context, replayId };
   if (s.beforeSend) event = s.beforeSend(event);
   if (!event) return;
   post("error", event);
@@ -577,6 +598,125 @@ function onRouteChange() {
   reportInp();
   inp = { interactions: new Map(), page: location.pathname };
   rumPush({ type: "view", page: location.pathname, navType: "route" });
+}
+
+
+// ---------------------------------------------------------------- gravação de sessão
+
+type RrwebEvent = { type: number; timestamp: number; [k: string]: unknown };
+type RecordFn = (o: Record<string, unknown>) => (() => void) | undefined;
+
+const REPLAY_SCRIPT = "https://www.farohq.com.br/sdk/rrweb-record-2.1.7.min.js";
+const REPLAY_AFTER_ERROR_MS = 10_000;
+const REPLAY_COOLDOWN_MS = 5 * 60_000;
+const REPLAY_CHUNK_MS = 30_000;
+
+let replayOptions: ReplayOptions | null = null;
+/** Segmentos do buffer: cada um começa num retrato completo da página (a cada 30 s). */
+let replaySegments: RrwebEvent[][] = [[]];
+let replayFull = false;
+let replayActive: { id: string; chunk: number; until: number } | null = null;
+let replayLastAt = 0;
+let replayTimer: ReturnType<typeof setTimeout> | null = null;
+
+function startReplay() {
+  const o = replayOptions!;
+  replayFull = sampled(o.sessionSampleRate ?? 0);
+  const w = window as unknown as { rrwebRecord?: { record?: RecordFn } & RecordFn };
+  const begin = () => {
+    const rec = (w.rrwebRecord?.record ?? w.rrwebRecord) as RecordFn | undefined;
+    if (typeof rec !== "function") return;
+    rec({
+      emit: (event: RrwebEvent, isCheckout?: boolean) => {
+        if (isCheckout) {
+          replaySegments.push([]);
+          if (!replayFull && !replayActive && replaySegments.length > 2) replaySegments = replaySegments.slice(-2);
+        }
+        replaySegments[replaySegments.length - 1].push(event);
+      },
+      checkoutEveryNms: REPLAY_CHUNK_MS,
+      maskAllInputs: true,
+      maskTextSelector: o.maskAllText === false ? undefined : "*",
+      blockSelector: o.blockSelector ?? "[data-farohq-block]",
+      sampling: { mousemove: 50, scroll: 150, input: "last" },
+      recordCanvas: false,
+      collectFonts: false,
+    });
+    if (replayFull) {
+      replayActive = { id: newId(), chunk: 0, until: Number.MAX_SAFE_INTEGER };
+      replayTimer = setInterval(() => uploadReplay(false), REPLAY_CHUNK_MS) as unknown as ReturnType<typeof setTimeout>;
+    }
+  };
+  if (w.rrwebRecord) return begin();
+  const script = document.createElement("script");
+  script.src = o.scriptUrl ?? REPLAY_SCRIPT;
+  script.async = true;
+  script.onload = begin;
+  document.head.appendChild(script);
+  const flushReplay = () => {
+    if (replayActive) uploadReplay(true);
+  };
+  window.addEventListener("pagehide", flushReplay);
+}
+
+/** No erro: marca a gravação deste momento (o minuto anterior + 10 s depois) e devolve o id. */
+function replayForError(): string | undefined {
+  if (!replayOptions) return undefined;
+  if (replayActive) return replayActive.id;
+  const now = Date.now();
+  if (now - replayLastAt < REPLAY_COOLDOWN_MS) return undefined;
+  replayLastAt = now;
+  replayActive = { id: newId(), chunk: 0, until: now + REPLAY_AFTER_ERROR_MS };
+  replayTimer = setTimeout(() => uploadReplay(true), REPLAY_AFTER_ERROR_MS);
+  return replayActive.id;
+}
+
+function uploadReplay(final: boolean) {
+  if (!state || !replayActive) return;
+  const events = replaySegments.flat();
+  replaySegments = [[]];
+  const active = replayActive;
+  if (events.length) {
+    const body = JSON.stringify({
+      replayId: active.id,
+      chunk: active.chunk++,
+      sessionId: sessionId(),
+      page: location.pathname,
+      release: state.release,
+      environment: state.environment,
+      startedAt: new Date(events[0].timestamp).toISOString(),
+      endedAt: new Date(events[events.length - 1].timestamp).toISOString(),
+      events,
+    });
+    void sendCompressed(`${state.endpoint}/ingest/browser/replay?key=${encodeURIComponent(state.key)}`, body);
+  }
+  if (final && !replayFull) {
+    replayActive = null;
+    if (replayTimer) clearTimeout(replayTimer);
+    replayTimer = null;
+  }
+}
+
+/** gzip no navegador quando dá (CompressionStream); sem cabeçalhos extras, para não disparar CORS. */
+async function sendCompressed(url: string, body: string) {
+  try {
+    let payload: Blob = new Blob([body], { type: "text/plain" });
+    const CS = (window as unknown as { CompressionStream?: new (f: string) => GenericTransformStream }).CompressionStream;
+    if (CS) {
+      const stream = new Blob([body]).stream().pipeThrough(new CS("gzip") as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+      payload = new Blob([await new Response(stream).arrayBuffer()], { type: "text/plain" });
+    }
+    const f = nativeFetch ?? window.fetch;
+    await f(url, { method: "POST", body: payload, keepalive: payload.size < 60_000, headers: { "Content-Type": "text/plain" } });
+  } catch {
+    // gravação é opcional: falha não atrapalha o site
+  }
+}
+
+function newId(): string {
+  const c = (window as unknown as { crypto?: Crypto }).crypto;
+  if (c && "randomUUID" in c) return (c as Crypto & { randomUUID(): string }).randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 // ---------------------------------------------------------------- envio
