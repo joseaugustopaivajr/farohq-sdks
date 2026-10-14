@@ -6,3 +6,4 @@ dist/
 **/.gradle/
 **/__pycache__/
 **/*.egg-info/
+!browser/bin/
