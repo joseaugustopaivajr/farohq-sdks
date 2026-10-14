@@ -1,6 +1,6 @@
 # FaroHQ.AspNetCore
 
-Envia os erros de aplicações ASP.NET Core (.NET 8+) para o FaroHQHQ.
+Envia os erros de aplicações ASP.NET Core (.NET 8+) para o FaroHQ.
 
 O que captura:
 - **Exceções não tratadas das requisições** (middleware), com rota, método e traceId.

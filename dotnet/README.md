@@ -1,6 +1,6 @@
 # FaroHQ.AspNetCore
 
-Envia os erros de aplicações ASP.NET Core (.NET 8+) para o FaroHQHQ.
+Envia os erros de aplicações ASP.NET Core (.NET 8+) para o FaroHQ.
 
 O que captura:
 - **Exceções não tratadas das requisições** (middleware), com rota, método e traceId.
@@ -9,10 +9,10 @@ O que captura:
 
 Não bloqueia a requisição (fila em memória + envio em segundo plano) e nunca lança exceção.
 
-## Instalação (local, enquanto não está no NuGet)
+## Instalação
 
 ```bash
-dotnet add SeuProjeto.csproj reference /caminho/farosdk/dotnet/src/FaroHQ.AspNetCore/FaroHQ.AspNetCore.csproj
+dotnet add package FaroHQ.AspNetCore
 ```
 
 `Program.cs`:
@@ -29,7 +29,6 @@ Configuração (`appsettings.json` ou variáveis de ambiente, que têm prioridad
 
 ```json
 "FaroHQ": {
-  "Endpoint": "http://localhost:8030/api/v1/ingest/event",
   "Service": "minha-api"
 }
 ```
