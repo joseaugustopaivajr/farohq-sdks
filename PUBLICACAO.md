@@ -159,3 +159,13 @@ Devem aparecer: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY
 | npm: `provenance ... private repository` | O repositório deixou de ser público |
 | PyPI: `invalid-publisher` | Algum campo do pending publisher não bate (workflow tem que ser `publicar.yml`, ambiente `pypi`) |
 | NuGet: `409 Conflict` | Versão já publicada (o workflow ignora com `--skip-duplicate`, suba a versão) |
+
+## Flutter (pub.dev)
+
+Pacote `farohq_flutter`, publisher `farohq.com.br`. Publicação manual desligada no pub.dev: só sai pelo GitHub Actions (OIDC, sem segredo).
+
+1. Suba `version:` em `flutter/pubspec.yaml` e escreva no `flutter/CHANGELOG.md`.
+2. Commit e push na main. O `flutter-tag.yml` cria a tag `flutter-vX.Y.Z` e roda o job `flutter` do `publicar.yml` nela.
+
+No pub.dev (Admin → Automated publishing): repositório `joseaugustopaivajr/farohq-sdks`, tag `flutter-v{{version}}`,
+**push** e **workflow_dispatch** marcados. Depois, atualize `FLUTTER_SDK_VERSION` em `farofront/lib/install/snippets.ts`.

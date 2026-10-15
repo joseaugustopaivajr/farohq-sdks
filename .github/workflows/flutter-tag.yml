@@ -1,0 +1,42 @@
+# Push na main com versão nova no flutter/pubspec.yaml → cria a tag flutter-vX.Y.Z e publica no pub.dev.
+# A tag criada aqui (GITHUB_TOKEN) não dispara outros workflows; por isso o publicar.yml é chamado direto na tag.
+name: Flutter — versão nova
+
+on:
+  push:
+    branches: [main]
+    paths: ["flutter/pubspec.yaml"]
+
+permissions:
+  contents: write # criar a tag
+  actions: write # chamar o publicar.yml
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versão nova?
+        id: v
+        run: |
+          V=$(sed -nE 's/^version: *([^ ]+).*$/\1/p' flutter/pubspec.yaml)
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if curl -fsS https://pub.dev/api/packages/farohq_flutter | grep -q "\"version\":\"$V\""; then
+            echo "$V já está no pub.dev: nada a fazer" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Criar a tag
+        if: steps.v.outputs.publish == 'true'
+        run: |
+          T="flutter-v${{ steps.v.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$T" >/dev/null; then
+            echo "A tag $T já existe (aponta para outro commit?). Suba a versão no pubspec.yaml." && exit 1
+          fi
+          git tag "$T" && git push origin "$T"
+      - name: Publicar
+        if: steps.v.outputs.publish == 'true'
+        run: gh workflow run publicar.yml --ref "flutter-v${{ steps.v.outputs.version }}" -f pacote=flutter
+        env: { GH_TOKEN: "${{ github.token }}" }

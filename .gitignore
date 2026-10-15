@@ -7,3 +7,11 @@ dist/
 **/__pycache__/
 **/*.egg-info/
 !browser/bin/
+
+# Flutter
+flutter/.dart_tool/
+flutter/build/
+flutter/example/.dart_tool/
+flutter/example/build/
+flutter/pubspec.lock
+flutter/example/pubspec.lock

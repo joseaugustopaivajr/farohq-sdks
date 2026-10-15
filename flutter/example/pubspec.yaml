@@ -1,0 +1,14 @@
+name: farohq_flutter_example
+description: Exemplo do FaroHQ para Flutter.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ">=1.1.0 <2.0.0"
+  farohq_flutter:
+    path: ../
