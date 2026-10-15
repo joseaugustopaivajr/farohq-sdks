@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
-const _version = '0.1.0';
+const _version = '0.1.1';
 const _defaultEndpoint = 'https://api.farohq.com.br/api/v1';
 const _maxQueue = 50;
 

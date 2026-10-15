@@ -7,9 +7,8 @@ telas abertas, chamadas HTTP e o que você registrar. O FaroHQ agrupa o que é o
 
 ## Instalação
 
-```yaml
-dependencies:
-  farohq_flutter: ^0.1.0
+```bash
+flutter pub add farohq_flutter
 ```
 
 ## Uso

@@ -1,6 +1,6 @@
 name: farohq_flutter
 description: Error monitoring for Flutter apps (Android and iOS) with FaroHQ. Captures crashes with screens, HTTP calls and breadcrumbs, grouped with the root cause.
-version: 0.1.0
+version: 0.1.1
 homepage: https://www.farohq.com.br
 repository: https://github.com/joseaugustopaivajr/farohq-sdks/tree/main/flutter
 issue_tracker: https://github.com/joseaugustopaivajr/farohq-sdks/issues

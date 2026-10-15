@@ -1,3 +1,7 @@
+## 0.1.1
+
+- README: instalação com `flutter pub add farohq_flutter`.
+
 ## 0.1.0
 
 - Primeira versão: erros do Flutter, assíncronos e da plataforma; rastro de telas, chamadas HTTP e registros manuais;
