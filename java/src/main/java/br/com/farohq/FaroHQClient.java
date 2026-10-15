@@ -31,14 +31,21 @@ public final class FaroHQClient implements AutoCloseable {
     /** Eventos aceitos e ainda não enviados (na fila ou sendo enviados agora). */
     private final java.util.concurrent.atomic.AtomicInteger pending = new java.util.concurrent.atomic.AtomicInteger();
     private final LogShipper logs;
+    private final Refusals refusals;
+
+    static final String USER_AGENT = "farohq-java/0.2.2";
 
     public FaroHQClient(FaroHQOptions options) {
         this.options = options;
+        this.refusals = new Refusals(options);
         this.queue = new ArrayBlockingQueue<>(Math.max(1, options.queueCapacity));
         this.worker = new Thread(this::loop, "farohq-sender");
         this.worker.setDaemon(true);
         this.worker.start();
-        this.logs = options.shipLogs && options.canSend() ? new LogShipper(options) : null;
+        this.logs = options.shipLogs && options.canSend() ? new LogShipper(options, refusals) : null;
+        if (options.canSend()) {
+            refusals.verifyInBackground(http);
+        }
     }
 
     /** Uma linha de log para o módulo de Logs (só se shipLogs estiver ligado). */
@@ -188,15 +195,18 @@ public final class FaroHQClient implements AutoCloseable {
     }
 
     private void send(String body) {
+        if (refusals.rejected()) {
+            return;
+        }
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(options.endpoint))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
                     .header("X-FaroHQ-Key", options.key)
-                    .header("User-Agent", "farohq-java/0.2.1")
+                    .header("User-Agent", USER_AGENT)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            http.send(request, HttpResponse.BodyHandlers.discarding());
+            refusals.check(http.send(request, HttpResponse.BodyHandlers.ofString()));
         } catch (Exception ignored) {
             // FaroHQ fora do ar ou rede caiu: o evento se perde, a aplicação segue
         }

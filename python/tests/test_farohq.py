@@ -19,8 +19,62 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(202)
         self.end_headers()
 
+    def do_GET(self):  # verificação da chave ao iniciar
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'{"ok":true}')
+
     def log_message(self, *args):
         pass
+
+
+class _Refuses(BaseHTTPRequestHandler):
+    hits = []
+
+    def _refuse(self):
+        _Refuses.hits.append(self.command + " " + self.path)
+        body = json.dumps({"status": 401, "message": "Chave de projeto inválida"}).encode("utf-8")
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        self._refuse()
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self._refuse()
+
+    def log_message(self, *args):
+        pass
+
+
+class ChaveRecusadaTest(unittest.TestCase):
+    def test_avisa_uma_vez_e_para_de_enviar(self):
+        import io
+        import time
+        server = HTTPServer(("127.0.0.1", 0), _Refuses)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = "http://127.0.0.1:%d/api/v1/ingest/event" % server.server_address[1]
+        err, sys.stderr = sys.stderr, io.StringIO()
+        try:
+            farohq.init(key="farohq_errada", endpoint=url, capture_unhandled=False, capture_logging=False)
+            for _ in range(50):
+                if _Refuses.hits:
+                    break
+                time.sleep(0.05)
+            time.sleep(0.1)
+            farohq.capture_message("depois da recusa")
+            farohq.flush(2)
+            out = sys.stderr.getvalue()
+        finally:
+            sys.stderr = err
+            server.shutdown()
+        self.assertEqual(_Refuses.hits, ["GET /api/v1/ingest/ping"])
+        self.assertEqual(out.count("[FaroHQ]"), 1, out)
+        self.assertIn("Chave recusada (401): Chave de projeto inválida", out)
 
 
 class FaroHQTest(unittest.TestCase):

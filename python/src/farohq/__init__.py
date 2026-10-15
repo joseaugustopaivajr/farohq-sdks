@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.request
 from collections import deque
 from datetime import datetime, timezone
@@ -39,7 +40,7 @@ __all__ = [
     "FaroHQWSGIMiddleware",
     "FaroHQASGIMiddleware",
 ]
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 DEFAULT_ENDPOINT = "https://api.farohq.com.br/api/v1/ingest/event"
 _GLOBAL_MAX_AGE = 300.0  # fora de um scope, só linhas dos últimos 5 minutos
@@ -70,8 +71,12 @@ class _Client:
         self.max_breadcrumbs = max(0, min(max_breadcrumbs, 100))
         self._queue: "queue.Queue[Optional[bytes]]" = queue.Queue(maxsize=queue_size)
         self._seen: "set[int]" = set()
+        self._rejected = False  # chave recusada (401): para de enviar
+        self._warned: "set[str]" = set()
         self._worker = threading.Thread(target=self._loop, name="farohq-sender", daemon=True)
         self._worker.start()
+        if self.can_send() and (endpoint or "").rstrip("/").endswith("/ingest/event"):
+            threading.Thread(target=self._verify, name="farohq-verify", daemon=True).start()
         self.ship_logs = bool(ship_logs) and self.can_send()
         self._logs: "queue.Queue[Dict[str, Any]]" = queue.Queue(maxsize=10_000)
         self._logs_endpoint = (endpoint or "").rstrip("/")
@@ -118,22 +123,69 @@ class _Client:
                 except queue.Empty:
                     break
             try:
-                req = urllib.request.Request(
-                    self._logs_endpoint,
-                    data=json.dumps(batch).encode("utf-8"),
-                    method="POST",
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-FaroHQ-Key": self.key,
-                        "User-Agent": "farohq-python/" + __version__,
-                    },
-                )
-                urllib.request.urlopen(req, timeout=10).close()
-            except Exception:
-                pass  # FaroHQ fora do ar: as linhas se perdem, a aplicação segue
+                if not self._rejected:
+                    self._post(self._logs_endpoint, json.dumps(batch).encode("utf-8"))
             finally:
                 for _ in batch:
                     self._logs.task_done()
+
+    def _post(self, url: str, data: bytes):
+        req = urllib.request.Request(url, data=data, method="POST", headers={
+            "Content-Type": "application/json",
+            "X-FaroHQ-Key": self.key,
+            "User-Agent": "farohq-python/" + __version__,
+        })
+        try:
+            urllib.request.urlopen(req, timeout=10).close()
+        except urllib.error.HTTPError as e:
+            self._refused(e)
+        except Exception:
+            pass  # FaroHQ fora do ar: o dado se perde, a aplicação segue
+
+    def _verify(self):
+        """Confere a chave ao iniciar: sem isso, uma chave errada só apareceria (ou não) no primeiro erro."""
+        url = self.endpoint.rstrip("/")[: -len("/ingest/event")] + "/ingest/ping"
+        req = urllib.request.Request(url, method="GET", headers={
+            "X-FaroHQ-Key": self.key,
+            "User-Agent": "farohq-python/" + __version__,
+        })
+        try:
+            urllib.request.urlopen(req, timeout=5).close()
+        except urllib.error.HTTPError as e:
+            self._refused(e)
+        except Exception as e:  # noqa: BLE001
+            self._warn("net", "Não foi possível falar com o FaroHQ ({}): {}.".format(url, e))
+
+    def _refused(self, e: "urllib.error.HTTPError"):
+        """Recusa do FaroHQ não passa em silêncio: aparece uma vez no stderr com o motivo."""
+        if e.code >= 500:
+            return
+        reason = ""
+        try:
+            reason = json.loads(e.read().decode("utf-8")).get("message") or ""
+        except Exception:  # noqa: BLE001
+            pass
+        why = ": " + reason if reason else ""
+        if e.code == 401:
+            self._rejected = True
+            self._warn("401", "Chave recusada (401){}. Nada está sendo enviado ao FaroHQ.".format(why))
+        elif e.code == 403:
+            self._warn("403", "Envio recusado (403){}.".format(why))
+        elif e.code == 404:
+            self._warn("404", "Endereço do FaroHQ não encontrado (404): confira FAROHQ_ENDPOINT ({}).".format(self.endpoint))
+        elif e.code == 429:
+            self._warn("429", "Limite atingido (429){}. Parte dos dados está sendo descartada.".format(why))
+
+    def _warn(self, code: str, message: str):
+        # Direto no stderr: o logging está capturado e o aviso não pode virar log enviado (nem erro)
+        if code in self._warned:
+            return
+        self._warned.add(code)
+        try:
+            sys.stderr.write("[FaroHQ] " + message + "\n")
+            sys.stderr.flush()
+        except Exception:  # noqa: BLE001
+            pass
 
     def can_send(self) -> bool:
         return bool(self.enabled and self.key and self.endpoint)
@@ -217,19 +269,8 @@ class _Client:
             try:
                 if data is None:
                     return
-                req = urllib.request.Request(
-                    self.endpoint,
-                    data=data,
-                    method="POST",
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-FaroHQ-Key": self.key,
-                        "User-Agent": "farohq-python/" + __version__,
-                    },
-                )
-                urllib.request.urlopen(req, timeout=10).close()
-            except Exception:
-                pass  # FaroHQ fora do ar: o evento se perde, a aplicação segue
+                if not self._rejected:
+                    self._post(self.endpoint, data)
             finally:
                 self._queue.task_done()
 

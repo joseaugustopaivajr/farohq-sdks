@@ -72,6 +72,10 @@ const pending = new Set<Promise<void>>();
 const captured = new WeakSet<object>();
 let handlersInstalled = false;
 let consolePatched = false;
+/** Avisos já mostrados (cada problema aparece uma vez só) e chave recusada (para de tentar). */
+const warned = new Set<string>();
+let keyRejected = false;
+const USER_AGENT = "farohq-node/0.2.1";
 /** Rastro por requisição (AsyncLocalStorage); fora de uma requisição, um rastro global. */
 const scopes = new AsyncLocalStorage<Scope>();
 const globalScope: Scope = { crumbs: [] };
@@ -95,6 +99,11 @@ function resolve(o: FaroHQOptions): Resolved {
 /** Configura o FaroHQ. Chame uma vez, no começo da aplicação. */
 export function init(options: FaroHQOptions = {}): void {
   config = resolve(options);
+  keyRejected = false;
+  if (config.enabled && !config.key && process.env.NODE_ENV === "production") {
+    warnOnce("nokey", "FAROHQ_KEY não definida: nenhum erro ou log será enviado ao FaroHQ.");
+  }
+  if (config.enabled && config.key) void verifyKey();
   if (options.captureConsole !== false && !consolePatched) {
     consolePatched = true;
     patchConsole();
@@ -159,16 +168,19 @@ function shipLogs(): Promise<void> {
     clearTimeout(logTimer);
     logTimer = null;
   }
-  if (!logQueue.length || !config.key) return Promise.resolve();
+  if (!logQueue.length || !config.key || keyRejected) {
+    if (keyRejected) logQueue.length = 0;
+    return Promise.resolve();
+  }
   const batch = logQueue.splice(0, LOG_BATCH);
   const url = config.endpoint.replace(/\/ingest\/event\/?$/, "/ingest/logs");
   const p = fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-FaroHQ-Key": config.key, "User-Agent": "farohq-node/0.2.0" },
+    headers: { "Content-Type": "application/json", "X-FaroHQ-Key": config.key, "User-Agent": USER_AGENT },
     body: JSON.stringify(batch),
     signal: AbortSignal.timeout(10000),
   })
-    .then(() => undefined)
+    .then(checkResponse)
     .catch(() => undefined)
     .finally(() => {
       pending.delete(p);
@@ -282,7 +294,7 @@ export async function onRequestError(
 }
 
 function send(payload: { message?: string; exception?: object; context?: Context }): Promise<void> {
-  if (!config.enabled || !config.key) return Promise.resolve();
+  if (!config.enabled || !config.key || keyRejected) return Promise.resolve();
   const body = JSON.stringify({
     level: "error",
     environment: config.environment,
@@ -294,12 +306,66 @@ function send(payload: { message?: string; exception?: object; context?: Context
   });
   const p = fetch(config.endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-FaroHQ-Key": config.key, "User-Agent": "farohq-node/0.1.0" },
+    headers: { "Content-Type": "application/json", "X-FaroHQ-Key": config.key, "User-Agent": USER_AGENT },
     body,
     signal: AbortSignal.timeout(10000),
   })
-    .then(() => undefined)
+    .then(checkResponse)
     .catch(() => undefined) // FaroHQ fora do ar: o evento se perde, a aplicação segue
+    .finally(() => pending.delete(p));
+  pending.add(p);
+  return p;
+}
+
+/** Escreve direto no stderr: o console está interceptado e o aviso não pode virar log enviado. */
+function warnOnce(code: string, message: string) {
+  if (warned.has(code)) return;
+  warned.add(code);
+  try {
+    process.stderr.write(`[FaroHQ] ${message}\n`);
+  } catch {
+    // sem stderr: nada a fazer
+  }
+}
+
+/**
+ * Recusa do FaroHQ não pode passar em silêncio: chave errada, domínio/conta bloqueados, cota ou
+ * endereço errado aparecem uma vez no log. Com a chave recusada (401), o SDK para de enviar.
+ */
+async function checkResponse(res: Response): Promise<void> {
+  if (res.ok || res.status >= 500) return;
+  let reason = "";
+  try {
+    reason = ((await res.json()) as { message?: string }).message ?? "";
+  } catch {
+    // corpo sem JSON
+  }
+  const why = reason ? `: ${reason}` : "";
+  if (res.status === 401) {
+    keyRejected = true;
+    warnOnce("401", `Chave recusada (401)${why}. Nada está sendo enviado ao FaroHQ.`);
+  } else if (res.status === 403) {
+    warnOnce("403", `Envio recusado (403)${why}.`);
+  } else if (res.status === 404) {
+    warnOnce("404", `Endereço do FaroHQ não encontrado (404): confira FAROHQ_ENDPOINT (${config.endpoint}).`);
+  } else if (res.status === 429) {
+    warnOnce("429", `Limite atingido (429)${why}. Parte dos dados está sendo descartada.`);
+  }
+}
+
+/** Confere a chave ao iniciar: sem isso, uma chave errada só apareceria (ou não) no primeiro erro. */
+function verifyKey(): Promise<void> {
+  // Só com o endereço padrão de eventos dá para saber onde fica a verificação
+  if (!/\/ingest\/event\/?$/.test(config.endpoint)) return Promise.resolve();
+  const url = config.endpoint.replace(/\/ingest\/event\/?$/, "/ingest/ping");
+  const p = fetch(url, {
+    headers: { "X-FaroHQ-Key": config.key ?? "", "User-Agent": USER_AGENT },
+    signal: AbortSignal.timeout(5000),
+  })
+    .then(checkResponse)
+    .catch((e: unknown) => {
+      warnOnce("net", `Não foi possível falar com o FaroHQ (${url}): ${e instanceof Error ? e.message : String(e)}.`);
+    })
     .finally(() => pending.delete(p));
   pending.add(p);
   return p;

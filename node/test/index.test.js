@@ -9,6 +9,8 @@ function server() {
     let data = "";
     req.on("data", (c) => (data += c));
     req.on("end", () => {
+      // GET /ingest/ping: verificação da chave que o SDK faz ao iniciar
+      if (req.method === "GET") return res.writeHead(200, { "Content-Type": "application/json" }).end('{"ok":true}');
       received.push({ key: req.headers["x-farohq-key"], path: req.url, body: JSON.parse(data) });
       res.writeHead(202).end();
     });
@@ -99,4 +101,36 @@ test("com shipLogs envia console e farohq.log em lote para /ingest/logs", async 
   assert.strictEqual(logs[1].level, "WARN");
   assert.deepStrictEqual(logs[1].attributes, { sku: 123 });
   assert.strictEqual(logs[0].service, "loja");
+});
+
+test("chave recusada: avisa uma vez no stderr e para de enviar", async () => {
+  const hits = [];
+  const srv = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      hits.push(`${req.method} ${req.url}`);
+      res.writeHead(401, { "Content-Type": "application/json" }).end(JSON.stringify({ status: 401, message: "Chave de projeto inválida" }));
+    });
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${srv.address().port}/api/v1/ingest/event`;
+  const writes = [];
+  const orig = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk, ...rest) => {
+    writes.push(String(chunk));
+    return true;
+  };
+  try {
+    farohq.init({ key: "farohq_errada", endpoint: url, captureUnhandled: false, captureConsole: false });
+    await farohq.flush();
+    await farohq.captureException(new Error("depois da recusa"));
+    await farohq.flush();
+  } finally {
+    process.stderr.write = orig;
+    srv.close();
+  }
+  assert.deepStrictEqual(hits, ["GET /api/v1/ingest/ping"]);
+  const warnings = writes.filter((w) => w.includes("[FaroHQ]"));
+  assert.strictEqual(warnings.length, 1, JSON.stringify(writes));
+  assert.match(warnings[0], /Chave recusada \(401\): Chave de projeto inválida/);
 });

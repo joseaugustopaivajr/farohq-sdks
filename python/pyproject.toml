@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "farohq"
-version = "0.2.0"
+version = "0.2.1"
 description = "Envia os erros de aplicações Python (Django, Flask, FastAPI...) para o FaroHQ: análise de causa raiz lendo o seu código."
 readme = "README.md"
 license = "MIT"

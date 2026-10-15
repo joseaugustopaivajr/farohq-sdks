@@ -29,8 +29,11 @@ final class LogShipper {
     /** Linhas aceitas e ainda não enviadas (na fila ou no lote sendo enviado). */
     private final java.util.concurrent.atomic.AtomicInteger pending = new java.util.concurrent.atomic.AtomicInteger();
 
-    LogShipper(FaroHQOptions options) {
+    private final Refusals refusals;
+
+    LogShipper(FaroHQOptions options, Refusals refusals) {
         this.options = options;
+        this.refusals = refusals;
         this.endpoint = options.endpoint.replaceAll("/ingest/event/?$", "/ingest/logs");
         this.queue = new ArrayBlockingQueue<>(Math.max(100, options.logsQueueCapacity));
         Thread t = new Thread(this::loop, "farohq-logs");
@@ -100,16 +103,19 @@ final class LogShipper {
     }
 
     private void send(List<String> lines) {
+        if (refusals.rejected()) {
+            return;
+        }
         try {
             String body = "[" + String.join(",", lines) + "]";
             HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
                     .header("X-FaroHQ-Key", options.key)
-                    .header("User-Agent", "farohq-java/0.2.1")
+                    .header("User-Agent", FaroHQClient.USER_AGENT)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            http.send(request, HttpResponse.BodyHandlers.discarding());
+            refusals.check(http.send(request, HttpResponse.BodyHandlers.ofString()));
         } catch (Exception ignored) {
             // FaroHQ fora do ar: as linhas se perdem, a aplicação segue
         }

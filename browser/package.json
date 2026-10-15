@@ -1,6 +1,6 @@
 {
   "name": "@farohqbr/browser",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "FaroHQ no navegador: erros de JavaScript com o código original (source maps), o que o usuário fez antes do erro, ligação com o backend pelo traceId e desempenho real das páginas (Web Vitals).",
   "license": "MIT",
   "homepage": "https://farohq.com.br",

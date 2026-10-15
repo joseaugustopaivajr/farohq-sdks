@@ -33,8 +33,12 @@ internal sealed class FaroHQLogShipper : BackgroundService
     private readonly IHttpClientFactory _httpFactory;
     private readonly FaroHQOptions _options;
 
-    public FaroHQLogShipper(FaroHQLogQueue queue, IHttpClientFactory httpFactory, IOptions<FaroHQOptions> options)
+    private readonly FaroHQRefusals _refusals;
+
+    public FaroHQLogShipper(FaroHQLogQueue queue, IHttpClientFactory httpFactory, IOptions<FaroHQOptions> options,
+        FaroHQRefusals refusals)
     {
+        _refusals = refusals;
         _queue = queue;
         _httpFactory = httpFactory;
         _options = options.Value;
@@ -84,7 +88,7 @@ internal sealed class FaroHQLogShipper : BackgroundService
 
     private async Task SendAsync(List<FaroHQLogLine> lines, CancellationToken ct)
     {
-        if (lines.Count == 0)
+        if (lines.Count == 0 || _refusals.Rejected)
         {
             return;
         }
@@ -93,6 +97,7 @@ internal sealed class FaroHQLogShipper : BackgroundService
             using var request = new HttpRequestMessage(HttpMethod.Post, Url) { Content = JsonContent.Create(lines) };
             request.Headers.Add("X-FaroHQ-Key", _options.Key);
             using var response = await _httpFactory.CreateClient(FaroHQSender.HttpClientName).SendAsync(request, ct);
+            await _refusals.CheckAsync(response);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

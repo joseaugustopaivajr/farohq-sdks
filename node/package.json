@@ -1,6 +1,6 @@
 {
   "name": "@farohqbr/node",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Envia os erros de aplicações Node.js (Express, Next.js, Fastify...) para o FaroHQ: análise de causa raiz lendo o seu código.",
   "license": "MIT",
   "homepage": "https://farohq.com.br",

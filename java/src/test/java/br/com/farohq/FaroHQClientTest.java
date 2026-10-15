@@ -32,6 +32,11 @@ class FaroHQClientTest {
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/ingest", ex -> {
+            if ("GET".equals(ex.getRequestMethod())) { // verificação da chave ao iniciar
+                ex.sendResponseHeaders(200, -1);
+                ex.close();
+                return;
+            }
             String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             if (ex.getRequestURI().getPath().endsWith("/logs")) {
                 logBodies.add(body);
@@ -51,6 +56,42 @@ class FaroHQClientTest {
     @AfterEach
     void stop() {
         server.stop(0);
+    }
+
+    @Test
+    void chaveRecusadaAvisaUmaVezEParaDeEnviar() throws Exception {
+        List<String> hits = new CopyOnWriteArrayList<>();
+        HttpServer refuses = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        refuses.createContext("/", ex -> {
+            hits.add(ex.getRequestMethod() + " " + ex.getRequestURI().getPath());
+            ex.getRequestBody().readAllBytes();
+            byte[] b = "{\"status\":401,\"message\":\"Chave de projeto inválida\"}".getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "application/json");
+            ex.sendResponseHeaders(401, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        refuses.start();
+        java.io.PrintStream err = System.err;
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(out, true, StandardCharsets.UTF_8));
+        try {
+            FaroHQClient c = new FaroHQClient(new FaroHQOptions().key("farohq_errada")
+                    .endpoint("http://127.0.0.1:" + refuses.getAddress().getPort() + "/api/v1/ingest/event"));
+            long until = System.currentTimeMillis() + 3000;
+            while (!out.toString(StandardCharsets.UTF_8).contains("[FaroHQ]") && System.currentTimeMillis() < until) {
+                Thread.sleep(20);
+            }
+            c.captureMessage("depois da recusa", null);
+            c.flush(Duration.ofSeconds(2));
+        } finally {
+            System.setErr(err);
+            refuses.stop(0);
+        }
+        String text = out.toString(StandardCharsets.UTF_8);
+        assertEquals(List.of("GET /api/v1/ingest/ping"), hits);
+        assertEquals(1, text.split("\\[FaroHQ\\]", -1).length - 1, text);
+        assertTrue(text.contains("Chave recusada (401): Chave de projeto inválida"), text);
     }
 
     @Test
@@ -188,6 +229,11 @@ class FaroHQClientTest {
         List<String> got = new CopyOnWriteArrayList<>();
         slow.createContext("/ingest", ex -> {
             sleep(800);
+            if ("GET".equals(ex.getRequestMethod())) { // verificação da chave ao iniciar
+                ex.sendResponseHeaders(200, -1);
+                ex.close();
+                return;
+            }
             got.add(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             ex.sendResponseHeaders(202, -1);
             ex.close();

@@ -38,6 +38,7 @@ public static class FaroHQExtensions
             });
         });
         services.AddSingleton<IFaroHQClient, FaroHQClient>();
+        services.AddSingleton<FaroHQRefusals>();
         services.AddHostedService<FaroHQSender>();
         services.AddSingleton<FaroHQLogQueue>();
         services.AddHostedService<FaroHQLogShipper>();

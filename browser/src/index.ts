@@ -106,6 +106,11 @@ let minuteStart = Date.now();
 /** Última chamada à API que falhou: o erro que vier logo depois provavelmente é por causa dela. */
 let lastFailure: { traceId: string; at: number } | null = null;
 let nativeFetch: typeof fetch | null = null;
+/** console.warn original (o console é interceptado para virar log/rastro) e avisos já mostrados. */
+let rawWarn: ((...args: unknown[]) => void) | null = null;
+const warned = new Set<string>();
+/** Chave ou domínio recusados: o SDK para de enviar até o próximo init. */
+let rejected = false;
 let installed = false;
 
 const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
@@ -126,9 +131,12 @@ export function init(options: BrowserOptions): void {
     beforeSend: options.beforeSend,
   };
   replayOptions = options.replay?.enabled ? options.replay : null;
+  rejected = false;
+  if (!nativeFetch) nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (!rawWarn && typeof console !== "undefined") rawWarn = console.warn.bind(console);
+  safe(verifyKey);
   if (installed) return;
   installed = true;
-  nativeFetch = window.fetch ? window.fetch.bind(window) : null;
   safe(installErrorHandlers);
   safe(installClickCrumbs);
   safe(installHistory);
@@ -699,6 +707,7 @@ function uploadReplay(final: boolean) {
 
 /** gzip no navegador quando dá (CompressionStream); sem cabeçalhos extras, para não disparar CORS. */
 async function sendCompressed(url: string, body: string) {
+  if (rejected) return;
   try {
     let payload: Blob = new Blob([body], { type: "text/plain" });
     const CS = (window as unknown as { CompressionStream?: new (f: string) => GenericTransformStream }).CompressionStream;
@@ -722,7 +731,7 @@ function newId(): string {
 // ---------------------------------------------------------------- envio
 
 function post(kind: "error" | "rum" | "logs", body: unknown) {
-  if (!state) return;
+  if (!state || rejected) return;
   const url = `${state.endpoint}/ingest/browser/${kind}?key=${encodeURIComponent(state.key)}`;
   let data: string;
   try {
@@ -736,6 +745,41 @@ function post(kind: "error" | "rum" | "logs", body: unknown) {
     const f = nativeFetch ?? window.fetch;
     void f(url, { method: "POST", body: data, keepalive: data.length < 60_000, headers: { "Content-Type": "text/plain" } }).catch(() => undefined);
   });
+}
+
+/**
+ * Confere a chave pública e o domínio ao iniciar. O envio normal usa sendBeacon, que não mostra a
+ * resposta: sem esta checagem, uma chave errada ou um domínio fora da lista passariam em silêncio.
+ */
+function verifyKey() {
+  if (!state || !nativeFetch) return;
+  const s = state;
+  void nativeFetch(`${s.endpoint}/ingest/browser/ping?key=${encodeURIComponent(s.key)}`, { method: "GET", credentials: "omit" })
+    .then(async (res) => {
+      if (res.ok || res.status >= 500 || state !== s) return;
+      let reason = "";
+      try {
+        reason = ((await res.json()) as { message?: string }).message ?? "";
+      } catch {
+        // corpo sem JSON
+      }
+      const why = reason ? `: ${reason}` : "";
+      if (res.status === 401 || res.status === 403) {
+        rejected = true;
+        warnOnce(String(res.status), `Envio recusado (${res.status})${why}. Nada deste site está sendo enviado ao FaroHQ.`);
+      } else if (res.status === 404) {
+        warnOnce("404", `Endereço do FaroHQ não encontrado (404): confira o endpoint (${s.endpoint}).`);
+      } else if (res.status === 429) {
+        warnOnce("429", `Limite atingido (429)${why}.`);
+      }
+    })
+    .catch(() => undefined); // rede ou bloqueador de anúncios: não polui o console de quem visita o site
+}
+
+function warnOnce(code: string, message: string) {
+  if (warned.has(code)) return;
+  warned.add(code);
+  safe(() => rawWarn?.(`[FaroHQ] ${message}`));
 }
 
 /** Manda na hora o que estiver na fila (ex.: antes de um redirect manual). */

@@ -73,3 +73,33 @@ test("erro não tratado da página é capturado", () => {
   w.dispatchEvent(new w.ErrorEvent("error", { error: err, message: err.message }));
   assert.strictEqual(sent(calls, "error")[0].exception.message, "x is not defined");
 });
+
+test("domínio recusado: avisa uma vez no console e para de enviar", async () => {
+  const dom = new JSDOM(`<!doctype html><body></body>`, { url: "https://outro-site.com/", runScripts: "outside-only" });
+  const w = dom.window;
+  pages.push(w);
+  const calls = [];
+  const warns = [];
+  w.console.warn = (...a) => warns.push(a.join(" "));
+  w.URL = globalThis.URL;
+  w.fetch = (input) => {
+    calls.push(String(input));
+    const ping = String(input).includes("/ingest/browser/ping");
+    return Promise.resolve({
+      status: ping ? 403 : 202,
+      ok: !ping,
+      json: async () => ({ status: 403, message: "Domínio https://outro-site.com não autorizado para esta chave" }),
+    });
+  };
+  w.navigator.sendBeacon = (url) => {
+    calls.push(String(url));
+    return true;
+  };
+  w.eval(GLOBAL);
+  w.FaroHQ.init({ publicKey: "farohq_pk_teste", endpoint: "https://api.farohq.com.br/api/v1", rum: false });
+  await new Promise((r) => setTimeout(r, 20));
+  w.FaroHQ.captureException(new w.Error("depois da recusa"));
+  assert.strictEqual(warns.length, 1, warns.join("|"));
+  assert.match(warns[0], /\[FaroHQ\] Envio recusado \(403\): Domínio https:\/\/outro-site\.com não autorizado/);
+  assert.ok(!calls.some((c) => c.includes("/ingest/browser/error")), calls.join("|"));
+});
